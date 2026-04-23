@@ -383,6 +383,23 @@ void PageWeather400x300::_drawDataRows() {
     } else {
         drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 4, "--", LEFT);
     }
+
+    // ── Row 5: Elevation (left column only, from API top-level "elevation" field) ──
+    const int16_t ROW5_Y      = DATA_ROW_BASE + DATA_ROW_H * 5;  // 254
+    const int16_t ROW5_LABEL_Y = ROW5_Y + 5;   // 259
+    const int16_t ROW5_VALUE_Y = ROW5_Y + 17;  // 271
+    _gfx->drawBitmap(0, ROW5_Y, wi_horizon_alt_24x24, 24, 24, CLR_WHITE, CLR_BLACK);
+    _gfx->setFont(&FreeSans_5pt8b);
+    drawStr(_gfx, 24, ROW5_LABEL_Y, "Altitude", LEFT);
+    _gfx->setFont(&FreeSans_7pt8b);
+    if (hasWeather && !isnan(_weather->elevation)) {
+        drawStr(_gfx, 24, ROW5_VALUE_Y,
+                String(static_cast<int>(std::round(_weather->elevation))), LEFT);
+        _gfx->setFont(&FONT_5pt8b);
+        drawStr(_gfx, _gfx->getCursorX(), ROW5_VALUE_Y, " m", LEFT);
+    } else {
+        drawStr(_gfx, 24, ROW5_VALUE_Y, "--", LEFT);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

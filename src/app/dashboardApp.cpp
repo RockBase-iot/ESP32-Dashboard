@@ -272,9 +272,8 @@ void DashboardApp::run() {
 
     WifiManager wifi;
     if (!_connectAndSync(board, wifi, cfg)) {
-        log_i(TAG, "Sleeping for %d minutes", cfg.sleepDuration);
-        board.epd().hibernate();
-        board.deepSleep(static_cast<uint64_t>(cfg.sleepDuration) * 60ULL * 1000000ULL);
+        log_w(TAG, "WiFi failed — entering AP mode for recovery");
+        _enterApMode(board); // never returns; restarts after kApTimeoutMs
         return;
     }
 

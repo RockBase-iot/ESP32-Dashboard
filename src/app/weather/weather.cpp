@@ -86,7 +86,8 @@ bool WeatherClass::_parseWeatherResponse(const String &body) {
     _weather.current.visibility           = cur["visibility"];
     _weather.current.weather_code         = cur["weather_code"];
     _weather.current.is_day               = (bool)cur["is_day"];
-    _weather.timezone = doc["timezone"].as<String>();
+    _weather.timezone  = doc["timezone"].as<String>();
+    _weather.elevation = doc["elevation"].as<float>();
 
     // ── Daily (5 days) ───────────────────────────────────────────────────
     _weather.daily.clear();

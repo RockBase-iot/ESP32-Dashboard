@@ -523,6 +523,17 @@ function saveCardConfig(card) {
     });
 }
 
+/* --- Enter key → Save for focused card --- */
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  var el = document.activeElement;
+  if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'SELECT')) return;
+  var card = el.closest('.card');
+  if (!card) return;
+  var btn = card.querySelector('.btn-save');
+  if (btn && !btn.disabled) { e.preventDefault(); btn.click(); }
+});
+
 /* --- City search via Open-Meteo Geocoding API --- */
 var citySearchTimer = null;
 function searchCity(query) {
