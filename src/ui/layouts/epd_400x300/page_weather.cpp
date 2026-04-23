@@ -410,7 +410,7 @@ void PageWeather400x300::_drawDataRows() {
         drawStr(_gfx, 99, ROW5_VALUE_Y,
                 String(static_cast<int>(std::round(_aqi->pm2_5))), LEFT);
         _gfx->setFont(&FONT_5pt8b);
-        drawStr(_gfx, _gfx->getCursorX(), ROW5_VALUE_Y, " ug", LEFT);
+        drawStr(_gfx, _gfx->getCursorX(), ROW5_VALUE_Y, " ug/m3", LEFT);
     } else {
         drawStr(_gfx, 99, ROW5_VALUE_Y, "--", LEFT);
     }
