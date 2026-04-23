@@ -238,7 +238,7 @@ void PageWeather400x300::_drawDataRows() {
     const uint8_t *iconsL[5] = {
         wi_sunrise_24x24,
         wi_strong_wind_24x24,
-        wi_day_sunny_24x24,
+        wi_horizon_alt_24x24,    // was UV Index, now Altitude
         air_filter_24x24,
         house_thermometer_24x24
     };
@@ -262,7 +262,7 @@ void PageWeather400x300::_drawDataRows() {
     //            drawString(24,    104+5+(24+6)*i, TXT_..., LEFT)
     //            drawString(170/2+20, 104+5+(24+6)*i, TXT_..., LEFT)
     _gfx->setFont(&FreeSans_5pt8b);
-    const char *labelsL[5] = { "Sunrise",  "Wind",     "UV Index", "Air Quality", "Indoor" };
+    const char *labelsL[5] = { "Sunrise",  "Wind",     "Altitude", "Air Quality", "Indoor" };
     const char *labelsR[5] = { "Sunset",   "Humidity", "Pressure", "Visibility",  "Indoor" };
     for (int i = 0; i < 5; ++i) {
         drawStr(_gfx, 24,  DATA_ROW_BASE + 5 + DATA_ROW_H * i, labelsL[i], LEFT);
@@ -313,14 +313,16 @@ void PageWeather400x300::_drawDataRows() {
     _gfx->setFont(&FONT_5pt8b);
     drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 1, "%", LEFT);
 
-    // ── Row 2: UV Index | Pressure ──
-    String uvStr = "N/A";
-    if (hasWeather && !_weather->daily.empty()) {
-        float uv = _weather->daily[0].uv_index_max;
-        uvStr = String(uv, 1);
-    }
+    // ── Row 2: Altitude | Pressure ──
     _gfx->setFont(&FreeSans_7pt8b);
-    drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 2, uvStr, LEFT);
+    if (hasWeather && !isnan(_weather->elevation)) {
+        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 2,
+                String(static_cast<int>(std::round(_weather->elevation))), LEFT);
+        _gfx->setFont(&FONT_5pt8b);
+        drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 2, " m", LEFT);
+    } else {
+        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 2, "--", LEFT);
+    }
 
     String presStr  = "--";
     String presUnit = " hPa";
@@ -384,21 +386,33 @@ void PageWeather400x300::_drawDataRows() {
         drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 4, "--", LEFT);
     }
 
-    // ── Row 5: Elevation (left column only, from API top-level "elevation" field) ──
-    const int16_t ROW5_Y      = DATA_ROW_BASE + DATA_ROW_H * 5;  // 254
+    // ── Row 5: UV Index (left) | PM2.5 (right) ──
+    const int16_t ROW5_Y       = DATA_ROW_BASE + DATA_ROW_H * 5;  // 254
     const int16_t ROW5_LABEL_Y = ROW5_Y + 5;   // 259
     const int16_t ROW5_VALUE_Y = ROW5_Y + 17;  // 271
-    _gfx->drawBitmap(0, ROW5_Y, wi_horizon_alt_24x24, 24, 24, CLR_WHITE, CLR_BLACK);
+    // Left: UV Index
+    _gfx->drawBitmap(0, ROW5_Y, wi_day_sunny_24x24, 24, 24, CLR_WHITE, CLR_BLACK);
     _gfx->setFont(&FreeSans_5pt8b);
-    drawStr(_gfx, 24, ROW5_LABEL_Y, "Altitude", LEFT);
+    drawStr(_gfx, 24, ROW5_LABEL_Y, "UV Index", LEFT);
     _gfx->setFont(&FreeSans_7pt8b);
-    if (hasWeather && !isnan(_weather->elevation)) {
+    if (hasWeather && !_weather->daily.empty()) {
         drawStr(_gfx, 24, ROW5_VALUE_Y,
-                String(static_cast<int>(std::round(_weather->elevation))), LEFT);
-        _gfx->setFont(&FONT_5pt8b);
-        drawStr(_gfx, _gfx->getCursorX(), ROW5_VALUE_Y, " m", LEFT);
+                String(_weather->daily[0].uv_index_max, 1), LEFT);
     } else {
-        drawStr(_gfx, 24, ROW5_VALUE_Y, "--", LEFT);
+        drawStr(_gfx, 24, ROW5_VALUE_Y, "N/A", LEFT);
+    }
+    // Right: PM2.5 (μg/m³)
+    _gfx->drawBitmap(75, ROW5_Y, wi_dust_24x24, 24, 24, CLR_WHITE, CLR_BLACK);
+    _gfx->setFont(&FreeSans_5pt8b);
+    drawStr(_gfx, 99, ROW5_LABEL_Y, "PM2.5", LEFT);
+    _gfx->setFont(&FreeSans_7pt8b);
+    if (hasAqi && !isnan(_aqi->pm2_5)) {
+        drawStr(_gfx, 99, ROW5_VALUE_Y,
+                String(static_cast<int>(std::round(_aqi->pm2_5))), LEFT);
+        _gfx->setFont(&FONT_5pt8b);
+        drawStr(_gfx, _gfx->getCursorX(), ROW5_VALUE_Y, " ug", LEFT);
+    } else {
+        drawStr(_gfx, 99, ROW5_VALUE_Y, "--", LEFT);
     }
 }
 
