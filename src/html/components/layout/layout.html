@@ -1,0 +1,25 @@
+<!-- === Top Bar === -->
+<div class="layout-topbar">
+  <button class="topbar-menu-btn" onclick="toggleSidebar()">&#9776;</button>
+  <div class="topbar-logo">
+    <span class="logo-text">EPD</span>
+    <span class="logo-sub">Weather</span>
+  </div>
+  <div class="topbar-info" id="topbarInfo"></div>
+  <button class="btn-restart-topbar" onclick="restartLocalDevice()" title="Restart device">&#x1F504; Restart</button>
+</div>
+
+<!-- === Sidebar === -->
+<div class="layout-sidebar" id="sidebar">
+  <ul class="layout-menu">
+    <li><a data-page="settings" class="nav-link active" onclick="switchPage('settings',this)"><span class="menu-icon">&#x2699;&#xFE0F;</span>Settings</a></li>
+    <li><a data-page="logs" class="nav-link" onclick="switchPage('logs',this)"><span class="menu-icon">&#x1F4CB;</span>Logs</a></li>
+  </ul>
+  <div class="sidebar-footer">EPD Weather Station</div>
+</div>
+
+<!-- === Mobile overlay === -->
+<div class="layout-mask" id="layoutMask" onclick="toggleSidebar()"></div>
+
+<!-- === Main Content === -->
+<div class="layout-main-container"><div class="layout-main">

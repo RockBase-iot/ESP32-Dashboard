@@ -1,0 +1,26 @@
+/* === Settings Form Fields === */
+.field-grid { display: flex; align-items: center; margin-bottom: 0.85rem; }
+.field-grid:last-child { margin-bottom: 0; }
+.field-label { width: 170px; min-width: 170px; color: #b0b0c0; font-size: 0.88rem; font-weight: 600; padding-right: 1rem; flex-shrink: 0; }
+.field-hint { font-size: 0.75rem; color: #666; margin-top: 2px; }
+.field-input, .field-select { flex: 1; padding: 0.55rem 0.75rem; border: 1px solid #444466; border-radius: 6px; background: #16162a; color: #fff; font-size: 0.88rem; transition: border-color 0.2s; }
+.field-input:focus, .field-select:focus { outline: none; border-color: #4CAF50; box-shadow: 0 0 0 2px rgba(76,175,80,0.15); }
+.field-input::placeholder { color: #555; }
+.field-select { appearance: auto; }
+
+/* === Page Title (screen reader only) === */
+.page-title { display: none; }
+
+@media (max-width: 576px) {
+  .field-grid { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .field-label { width: auto; min-width: auto; padding-right: 0; }
+  .field-input, .field-select { width: 100%; }
+}
+
+/* === City Search Dropdown === */
+.city-dropdown { background: #1a1a2e; border: 1px solid #444466; border-radius: 6px; max-height: 240px; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,0.6); }
+.city-dropdown::-webkit-scrollbar { width: 4px; }
+.city-dropdown::-webkit-scrollbar-thumb { background: #444466; border-radius: 2px; }
+.city-item { padding: 0.6rem 0.75rem; cursor: pointer; font-size: 0.85rem; color: #ccc; border-bottom: 1px solid #2a2a44; }
+.city-item:last-child { border-bottom: none; }
+.city-item:hover { background: #2a2a4a; color: #fff; }

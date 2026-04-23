@@ -1,0 +1,6 @@
+// Placeholder directory for font header files.
+// Migrate .h font files from lib/esp32-dashboard-assets/fonts/ here.
+// Example structure:
+//   src/assets/fonts/FreeSans9pt7b.h
+//   src/assets/fonts/FreeSans12pt7b.h
+//   src/assets/fonts/Roboto_Regular10pt7b.h

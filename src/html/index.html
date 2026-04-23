@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EPD Weather Config</title>
+<style>
+/* === Reset & Base === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; height: 100%; }
+body { font-family: 'Segoe UI', Arial, sans-serif; color: #fff; background: #1a1a2e; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+a { text-decoration: none; color: #4CAF50; }
+
+/* === Page visibility === */
+.page { display: none; }
+.page.active { display: block; }
+
+/* === Placeholder Pages === */
+.placeholder-page { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 50vh; color: #555; }
+.placeholder-page .ph-icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.4; }
+.placeholder-page .ph-title { font-size: 1.5rem; color: #8e8ea0; margin-bottom: 0.5rem; }
+.placeholder-page .ph-desc { font-size: 0.9rem; color: #555; }
+
+/* === Toast Notification === */
+.toast-container { position: fixed; bottom: 12px; right: 12px; z-index: 99999; pointer-events: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.ngx-toastr { position: relative; overflow: hidden; width: 300px; border-radius: 6px; padding: 14px 30px 14px 48px; background-position: 14px center; background-repeat: no-repeat; background-size: 22px; box-shadow: 0 0 12px rgba(0,0,0,0.6); color: #fff; pointer-events: auto; opacity: 0; transform: translateX(40px); transition: opacity 0.3s ease, transform 0.3s ease; }
+.ngx-toastr.toast-in { opacity: 0.95; transform: translateX(0); }
+.ngx-toastr.toast-out { opacity: 0; transform: translateX(40px); }
+.toast-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 3px; }
+.toast-detail { font-size: 0.82rem; opacity: 0.88; line-height: 1.4; word-break: break-word; }
+.toast-close-btn { position: absolute; right: 7px; top: 5px; background: transparent; border: none; color: #fff; font-size: 16px; cursor: pointer; opacity: 0.6; line-height: 1; }
+.toast-close-btn:hover { opacity: 1; }
+.toast-progress { position: absolute; left: 0; bottom: 0; height: 4px; background: rgba(0,0,0,0.3); }
+.ngx-toastr.toast-success { background-color: #51A351; }
+.ngx-toastr.toast-error { background-color: #BD362F; }
+.ngx-toastr.toast-info { background-color: #2F96B4; }
+.ngx-toastr.toast-warning { background-color: #F89406; }
+
+/* === Layout Wrapper === */
+.layout-wrapper { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* === Top Bar === */
+.layout-topbar { position: fixed; top: 0; left: 0; right: 0; height: 4rem; background: linear-gradient(135deg, #1a1a2e 0%, #2a2a3e 100%); border-bottom: 1px solid #333; display: flex; align-items: center; padding: 0 1.5rem; z-index: 200; box-shadow: 0 2px 12px rgba(0,0,0,0.3); gap: 0.75rem; }
+.topbar-menu-btn { display: none; background: none; border: 1px solid #555; border-radius: 6px; color: #fff; font-size: 1.3rem; padding: 5px 9px; cursor: pointer; }
+.topbar-menu-btn:hover { background: #333; border-color: #4CAF50; }
+.topbar-logo { display: flex; align-items: center; gap: 6px; }
+.topbar-logo .logo-text { font-size: 1.6rem; font-weight: 900; color: #4CAF50; letter-spacing: 1px; }
+.topbar-logo .logo-sub { font-size: 1rem; color: #aaa; font-weight: 300; }
+.topbar-info { display: flex; align-items: center; gap: 1rem; margin-left: auto; font-size: 0.85rem; color: #aaa; }
+.btn-restart-topbar { background: linear-gradient(135deg, #1565C0, #1E88E5); color: #fff; border: none; padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; white-space: nowrap; transition: all 0.2s; }
+.btn-restart-topbar:hover { background: linear-gradient(135deg, #1E88E5, #42A5F5); transform: translateY(-1px); }
+
+/* === Sidebar === */
+.layout-sidebar { position: fixed; top: 4rem; left: 0; bottom: 0; width: 220px; background: linear-gradient(180deg, #1e1e32 0%, #16162a 100%); border-right: 1px solid #2a2a3e; overflow-y: auto; z-index: 100; transition: transform 0.3s ease; }
+.layout-sidebar::-webkit-scrollbar { width: 4px; }
+.layout-sidebar::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+.layout-menu { list-style: none; padding: 0.5rem 0; }
+.layout-menu li { margin: 2px 8px; }
+.layout-menu li a { display: flex; align-items: center; gap: 10px; padding: 0.7rem 1rem; color: #8e8ea0; border-radius: 8px; transition: all 0.2s; font-size: 0.95rem; font-weight: 500; cursor: pointer; }
+.layout-menu li a:hover { background: rgba(76,175,80,0.1); color: #fff; }
+.layout-menu li a.active { background: rgba(76,175,80,0.15); color: #4CAF50; font-weight: 700; border-left: 3px solid #4CAF50; }
+.menu-icon { font-size: 1.1rem; width: 24px; text-align: center; }
+.sidebar-footer { position: absolute; bottom: 0; left: 0; right: 0; padding: 0.75rem 1rem; border-top: 1px solid #2a2a3e; text-align: center; font-size: 0.75rem; color: #555; }
+
+/* === Main Content === */
+.layout-main-container { margin-left: 220px; margin-top: 4rem; min-height: calc(100vh - 4rem); padding: 1.5rem 2rem; }
+.layout-main { max-width: 860px; width: 100%; }
+
+/* === Mobile Overlay === */
+.layout-mask { display: none; position: fixed; top: 4rem; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 99; }
+.layout-mask.active { display: block; }
+
+/* === Responsive === */
+@media (max-width: 991px) {
+  .layout-sidebar { transform: translateX(-100%); }
+  .layout-sidebar.open { transform: translateX(0); z-index: 150; }
+  .layout-main-container { margin-left: 0; }
+  .topbar-menu-btn { display: flex; }
+  .layout-topbar { padding: 0 1rem; }
+}
+@media (max-width: 576px) {
+  .layout-main-container { padding: 1rem; }
+}
+
+/* === Card === */
+.card { background: linear-gradient(135deg, #22223a, #2a2a44); border: 1px solid #333355; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); margin-bottom: 1.25rem; }
+.card-title { display: flex; align-items: center; gap: 0.5rem; font-size: 1.05rem; font-weight: 700; color: #fff; padding: 1rem 1.25rem; border-bottom: 1px solid #333355; margin: 0; }
+.card-icon { font-size: 1.1rem; }
+.card-body { padding: 1.25rem; }
+.card-footer { display: flex; justify-content: flex-start; padding: 0.75rem 1.25rem; border-top: 1px solid #333355; }
+
+/* === Save Button === */
+.btn-save { background: linear-gradient(135deg, #4CAF50, #45a049); color: #fff; border: none; padding: 0.5rem 1.5rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 700; transition: all 0.2s; }
+.btn-save:hover:not(:disabled) { background: linear-gradient(135deg, #45a049, #3d8b40); transform: translateY(-1px); box-shadow: 0 3px 10px rgba(76,175,80,0.3); }
+.btn-save:disabled { background: linear-gradient(135deg, #555, #444); color: #888; cursor: not-allowed; }
+
+/* === Settings Form Fields === */
+.field-grid { display: flex; align-items: center; margin-bottom: 0.85rem; }
+.field-grid:last-child { margin-bottom: 0; }
+.field-label { width: 170px; min-width: 170px; color: #b0b0c0; font-size: 0.88rem; font-weight: 600; padding-right: 1rem; flex-shrink: 0; }
+.field-hint { font-size: 0.75rem; color: #666; margin-top: 2px; }
+.field-input, .field-select { flex: 1; padding: 0.55rem 0.75rem; border: 1px solid #444466; border-radius: 6px; background: #16162a; color: #fff; font-size: 0.88rem; transition: border-color 0.2s; }
+.field-input:focus, .field-select:focus { outline: none; border-color: #4CAF50; box-shadow: 0 0 0 2px rgba(76,175,80,0.15); }
+.field-input::placeholder { color: #555; }
+.field-select { appearance: auto; }
+
+/* === Page Title (screen reader only) === */
+.page-title { display: none; }
+
+@media (max-width: 576px) {
+  .field-grid { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .field-label { width: auto; min-width: auto; padding-right: 0; }
+  .field-input, .field-select { width: 100%; }
+}
+
+/* === City Search Dropdown === */
+.city-dropdown { background: #1a1a2e; border: 1px solid #444466; border-radius: 6px; max-height: 240px; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,0.6); }
+.city-dropdown::-webkit-scrollbar { width: 4px; }
+.city-dropdown::-webkit-scrollbar-thumb { background: #444466; border-radius: 2px; }
+.city-item { padding: 0.6rem 0.75rem; cursor: pointer; font-size: 0.85rem; color: #ccc; border-bottom: 1px solid #2a2a44; }
+.city-item:last-child { border-bottom: none; }
+.city-item:hover { background: #2a2a4a; color: #fff; }
+
+</style>
+</head>
+<body>
+<div class="layout-wrapper">
+
+<!-- === Top Bar === -->
+<div class="layout-topbar">
+  <button class="topbar-menu-btn" onclick="toggleSidebar()">&#9776;</button>
+  <div class="topbar-logo">
+    <span class="logo-text">EPD</span>
+    <span class="logo-sub">Weather</span>
+  </div>
+  <div class="topbar-info" id="topbarInfo"></div>
+  <button class="btn-restart-topbar" onclick="restartLocalDevice()" title="Restart device">&#x1F504; Restart</button>
+</div>
+
+<!-- === Sidebar === -->
+<div class="layout-sidebar" id="sidebar">
+  <ul class="layout-menu">
+    <li><a data-page="settings" class="nav-link active" onclick="switchPage('settings',this)"><span class="menu-icon">&#x2699;&#xFE0F;</span>Settings</a></li>
+    <li><a data-page="logs" class="nav-link" onclick="switchPage('logs',this)"><span class="menu-icon">&#x1F4CB;</span>Logs</a></li>
+  </ul>
+  <div class="sidebar-footer">EPD Weather Station</div>
+</div>
+
+<!-- === Mobile overlay === -->
+<div class="layout-mask" id="layoutMask" onclick="toggleSidebar()"></div>
+
+<!-- === Main Content === -->
+<div class="layout-main-container"><div class="layout-main">
+
+
+<!-- ====== Settings Page ====== -->
+<div id="page-settings" class="page active">
+<h1 class="page-title">Settings</h1>
+
+<!-- WiFi Card -->
+<div class="card">
+  <h2 class="card-title"><span class="card-icon">&#x1F4E1;</span>WiFi</h2>
+  <div class="card-body">
+    <div class="field-grid">
+      <span class="field-label">SSID</span>
+      <input class="field-input" type="text" id="s_WifiSSID" autocomplete="off" placeholder="Network name">
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Password</span>
+      <div style="position:relative;flex:1;min-width:0;">
+        <input class="field-input" type="password" id="s_WifiPSWD" autocomplete="new-password"
+               style="width:100%;box-sizing:border-box;padding-right:2.4rem;"
+               onfocus="this.select()" oninput="onPwdInput(this)">
+        <button type="button" id="pwdEyeBtn" onclick="togglePwdVisibility()"
+                style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#aaa;font-size:1.1rem;padding:0;line-height:1;"
+                title="Toggle password visibility">&#x1F441;</button>
+      </div>
+    </div>
+  </div>
+  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('wifi')">Save</button></div>
+</div>
+
+<!-- Location Card -->
+<div class="card">
+  <h2 class="card-title"><span class="card-icon">&#x1F4CD;</span>Location</h2>
+  <div class="card-body">
+    <div class="field-grid">
+      <span class="field-label">City</span>
+      <div style="position:relative;flex:1;min-width:0;">
+        <input class="field-input" type="text" id="s_City" placeholder="Type city name to search..." autocomplete="off" oninput="searchCity(this.value)" style="width:100%;box-sizing:border-box;">
+        <div id="cityDropdown" class="city-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:100;"></div>
+      </div>
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Lat / Lon</span>
+      <input class="field-input" type="text" id="s_Lat" placeholder="Latitude" style="margin-right:6px;">
+      <input class="field-input" type="text" id="s_Lon" placeholder="Longitude">
+    </div>
+    <p class="field-hint">Can't find your city? Enter coordinates manually above. <a href="https://www.latlong.net/" target="_blank" style="color:#4FC3F7;">Latitude &amp; Longitude Finder &#x2197;</a></p>
+    <div class="field-grid" style="margin-top:0.85rem;">
+      <span class="field-label">Timezone</span>
+      <input class="field-input" type="text" id="s_Timezone" placeholder="POSIX, e.g. CST-8 or UTC">
+    </div>
+  </div>
+  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('location')">Save</button></div>
+</div>
+
+<!-- Schedule Card -->
+<div class="card">
+  <h2 class="card-title"><span class="card-icon">&#x23F0;</span>Schedule</h2>
+  <div class="card-body">
+    <div class="field-grid">
+      <span class="field-label">Refresh Interval</span>
+      <input class="field-input" type="number" id="s_SleepMin" min="1" max="1440" placeholder="minutes between updates">
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Bed Time (hour)</span>
+      <input class="field-input" type="number" id="s_BedTime" min="0" max="23" placeholder="0–23, display sleeps after this hour">
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Wake Time (hour)</span>
+      <input class="field-input" type="number" id="s_WakeTime" min="0" max="23" placeholder="0–23, display wakes at this hour">
+    </div>
+  </div>
+  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('schedule')">Save</button></div>
+</div>
+
+<!-- Units Card -->
+<div class="card">
+  <h2 class="card-title"><span class="card-icon">&#x1F4CF;</span>Units</h2>
+  <div class="card-body">
+    <div class="field-grid">
+      <span class="field-label">Temperature</span>
+      <select class="field-select" id="s_UnitsTemp">
+        <option value="C">Celsius (°C)</option>
+        <option value="F">Fahrenheit (°F)</option>
+      </select>
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Wind Speed</span>
+      <select class="field-select" id="s_UnitsSpeed">
+        <option value="kmh">km/h</option>
+        <option value="mph">mph</option>
+        <option value="ms">m/s</option>
+        <option value="kn">knots</option>
+      </select>
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Pressure</span>
+      <select class="field-select" id="s_UnitsPres">
+        <option value="hPa">hPa</option>
+        <option value="inHg">inHg</option>
+        <option value="mmHg">mmHg</option>
+      </select>
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Distance</span>
+      <select class="field-select" id="s_UnitsDist">
+        <option value="km">km</option>
+        <option value="mi">miles</option>
+      </select>
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Precipitation</span>
+      <select class="field-select" id="s_UnitsPrecip">
+        <option value="mm">mm</option>
+        <option value="in">inches</option>
+      </select>
+    </div>
+  </div>
+  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('units')">Save</button></div>
+</div>
+
+<!-- Display Card -->
+<div class="card">
+  <h2 class="card-title"><span class="card-icon">&#x1F5A5;&#xFE0F;</span>Display</h2>
+  <div class="card-body">
+    <div class="field-grid">
+      <span class="field-label">Time Format</span>
+      <select class="field-select" id="s_TimeFmt">
+        <option value="%H:%M">24-hour &nbsp;(14:30)</option>
+        <option value="%I:%M %p">12-hour &nbsp;(02:30 PM)</option>
+      </select>
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Date Format</span>
+      <select class="field-select" id="s_DateFmt">
+        <option value="%a, %B %e">Tue, April 5</option>
+        <option value="%Y/%m/%d">2026/04/23</option>
+        <option value="%Y-%m-%d">2026-04-23</option>
+        <option value="%d/%m/%Y">23/04/2026</option>
+        <option value="%m/%d/%Y">04/23/2026</option>
+      </select>
+    </div>
+    <div class="field-grid">
+      <span class="field-label">Language</span>
+      <select class="field-select" id="s_Language">
+        <option value="en_US">English</option>
+        <option value="zh_CN">中文</option>
+      </select>
+    </div>
+  </div>
+  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('display')">Save</button></div>
+</div>
+
+</div><!-- /page-settings -->
+
+<!-- ====== Logs Page ====== -->
+<div id="page-logs" class="page">
+  <div class="placeholder-page">
+    <div class="ph-icon">&#x1F4CB;</div>
+    <div class="ph-title">Logs</div>
+    <div class="ph-desc">Log viewer coming soon</div>
+  </div>
+</div><!-- /page-logs -->
+
+
+</div><!-- /layout-main -->
+</div><!-- /layout-main-container -->
+</div><!-- /layout-wrapper -->
+
+<div id="toast-container" class="toast-container"></div>
+
+<script>
+/* === Navigation === */
+function switchPage(pageId, el) {
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.getElementById('page-' + pageId).classList.add('active');
+  document.querySelectorAll('.nav-link').forEach(function(a) { a.classList.remove('active'); });
+  if (el) el.classList.add('active');
+  closeSidebar();
+  if (pageId === 'settings' && !settingsLoaded) loadSettingsConfig();
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('layoutMask').classList.toggle('active');
+}
+
+function closeSidebar() {
+  if (window.innerWidth <= 991) {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('layoutMask').classList.remove('active');
+  }
+}
+
+/* === Toast === */
+function showToast(msg, isError, type, title) {
+  var toastType = type || (isError ? 'error' : 'success');
+  var toastTitle = title || (isError ? 'Error' : 'Saved');
+  var container = document.getElementById('toast-container');
+  var el = document.createElement('div');
+  el.className = 'ngx-toastr toast-' + toastType;
+  el.innerHTML =
+    '<button class="toast-close-btn" onclick="var p=this.parentNode;p.classList.add(\'toast-out\');setTimeout(function(){if(p.parentNode)p.parentNode.removeChild(p);},350);">&#x2715;</button>' +
+    '<div class="toast-title">' + toastTitle + '</div>' +
+    '<div class="toast-detail">' + msg + '</div>' +
+    '<div class="toast-progress" style="width:100%;"></div>';
+  container.appendChild(el);
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() { el.classList.add('toast-in'); });
+  });
+  var prog = el.querySelector('.toast-progress');
+  var duration = 4000;
+  var start = null;
+  function anim(ts) {
+    if (!start) start = ts;
+    var pct = 100 - Math.min(100, (ts - start) / duration * 100);
+    prog.style.width = pct + '%';
+    if (pct > 0 && el.parentNode) requestAnimationFrame(anim);
+  }
+  requestAnimationFrame(anim);
+  el._tid = setTimeout(function() {
+    el.classList.add('toast-out');
+    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 350);
+  }, duration);
+}
+
+/* === Device Restart === */
+function restartLocalDevice() {
+  if (!confirm('Restart the weather display?')) return;
+  fetch('/api/system/restart', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+    .then(function(r) {
+      if (r.ok) showToast('Device is restarting...', false, 'info', 'Restart');
+      else showToast('Restart request failed', true);
+    })
+    .catch(function() { showToast('Device is restarting...', false, 'info', 'Restart'); });
+}
+
+/* === Init on load: settings is default page === */
+(function() {
+  function init() {
+    var active = document.querySelector('.page.active');
+    if (active && active.id === 'page-settings') loadSettingsConfig();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
+/* === Settings Page Logic === */
+var settingsLoaded = false;
+var PWD_SENTINEL = '\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF';
+
+function onPwdInput(el) {
+  var btn = document.getElementById('pwdEyeBtn');
+  if (!btn) return;
+  var modified = el.value.length > 0 && el.value !== PWD_SENTINEL;
+  btn.style.display = modified ? 'inline-block' : 'none';
+  if (!modified) el.type = 'password';
+}
+
+function togglePwdVisibility() {
+  var inp = document.getElementById('s_WifiPSWD');
+  var btn = document.getElementById('pwdEyeBtn');
+  if (!inp || !btn) return;
+  inp.type = (inp.type === 'password') ? 'text' : 'password';
+  btn.innerHTML = inp.type === 'password' ? '&#x1F441;' : '&#x1F648;';
+}
+
+// Field map: card name → list of {id, key, password?, int?}
+var CARD_FIELDS = {
+  wifi: [
+    { id: 's_WifiSSID', key: 'WifiSSID' },
+    { id: 's_WifiPSWD', key: 'WifiPSWD', password: true },
+  ],
+  location: [
+    { id: 's_Lat',      key: 'Lat' },
+    { id: 's_Lon',      key: 'Lon' },
+    { id: 's_City',     key: 'City' },
+    { id: 's_Timezone', key: 'Timezone' },
+  ],
+  schedule: [
+    { id: 's_SleepMin', key: 'SleepMin', int: true },
+    { id: 's_BedTime',  key: 'BedTime',  int: true },
+    { id: 's_WakeTime', key: 'WakeTime', int: true },
+  ],
+  units: [
+    { id: 's_UnitsTemp',   key: 'UnitsTemp' },
+    { id: 's_UnitsSpeed',  key: 'UnitsSpeed' },
+    { id: 's_UnitsPres',   key: 'UnitsPres' },
+    { id: 's_UnitsDist',   key: 'UnitsDist' },
+    { id: 's_UnitsPrecip', key: 'UnitsPrecip' },
+  ],
+  display: [
+    { id: 's_TimeFmt',  key: 'TimeFmt' },
+    { id: 's_DateFmt',  key: 'DateFmt' },
+    { id: 's_Language', key: 'Language' },
+  ],
+};
+
+function _getVal(id) {
+  var el = document.getElementById(id);
+  return el ? el.value : '';
+}
+
+function _setVal(id, val) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (el.tagName === 'SELECT') {
+    // Try to select matching option
+    var opts = el.options;
+    for (var i = 0; i < opts.length; i++) {
+      if (opts[i].value === String(val)) { el.selectedIndex = i; return; }
+    }
+    // No match — leave as-is
+  } else {
+    el.value = (val !== null && val !== undefined) ? String(val) : '';
+  }
+}
+
+function loadSettingsConfig() {
+  fetch('/api/config')
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(cfg) {
+      Object.keys(CARD_FIELDS).forEach(function(card) {
+        CARD_FIELDS[card].forEach(function(f) {
+          if (!f.password) _setVal(f.id, cfg[f.key]);
+        });
+      });
+      var pwdEl = document.getElementById('s_WifiPSWD');
+      if (pwdEl) { pwdEl.value = PWD_SENTINEL; pwdEl.type = 'password'; }
+      var eyeBtn = document.getElementById('pwdEyeBtn');
+      if (eyeBtn) eyeBtn.style.display = 'none';
+      settingsLoaded = true;
+    })
+    .catch(function(e) {
+      showToast('Failed to load config: ' + e, true);
+    });
+}
+
+function saveCardConfig(card) {
+  var fields = CARD_FIELDS[card];
+  if (!fields) return;
+
+  var data = {};
+  fields.forEach(function(f) {
+    var val = _getVal(f.id);
+    if (f.password && (!val || val === PWD_SENTINEL)) return; // skip empty / sentinel
+    data[f.key] = f.int ? (parseInt(val, 10) || 0) : val;
+  });
+
+  // Disable save button during request
+  var btn = document.querySelector('#page-settings .card-footer [onclick*="' + card + '"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+      if (res.ok) showToast('Saved successfully');
+      else showToast('Save failed: ' + (res.error || 'unknown'), true);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+      showToast('Request failed: ' + e, true);
+    });
+}
+
+/* --- City search via Open-Meteo Geocoding API --- */
+var citySearchTimer = null;
+function searchCity(query) {
+  clearTimeout(citySearchTimer);
+  var dd = document.getElementById('cityDropdown');
+  if (!query || query.length < 2) { dd.style.display = 'none'; return; }
+  citySearchTimer = setTimeout(function() {
+    fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(query) + '&count=8&language=en&format=json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.results || data.results.length === 0) {
+        dd.innerHTML = '<div class="city-item" style="color:#888;">No results</div>';
+        dd.style.display = 'block'; return;
+      }
+      dd.innerHTML = '';
+      data.results.forEach(function(c) {
+        var item = document.createElement('div');
+        item.className = 'city-item';
+        item.textContent = c.name + (c.admin1 ? ', ' + c.admin1 : '') + (c.country ? ', ' + c.country : '') + ' (' + c.latitude.toFixed(2) + ', ' + c.longitude.toFixed(2) + ')';
+        item.onclick = function() {
+          document.getElementById('s_City').value = c.name + (c.admin1 ? ', ' + c.admin1 : '') + (c.country ? ', ' + c.country : '');
+          document.getElementById('s_Lat').value = c.latitude.toFixed(4);
+          document.getElementById('s_Lon').value = c.longitude.toFixed(4);
+          dd.style.display = 'none';
+        };
+        dd.appendChild(item);
+      });
+      dd.style.display = 'block';
+    }).catch(function() { dd.style.display = 'none'; });
+  }, 350);
+}
+
+document.addEventListener('click', function(e) {
+  var dd = document.getElementById('cityDropdown');
+  if (dd && !dd.contains(e.target) && e.target.id !== 's_City') dd.style.display = 'none';
+});
+
+</script>
+</body>
+</html>

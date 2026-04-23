@@ -1,0 +1,30 @@
+/* === Reset & Base === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; height: 100%; }
+body { font-family: 'Segoe UI', Arial, sans-serif; color: #fff; background: #1a1a2e; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+a { text-decoration: none; color: #4CAF50; }
+
+/* === Page visibility === */
+.page { display: none; }
+.page.active { display: block; }
+
+/* === Placeholder Pages === */
+.placeholder-page { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 50vh; color: #555; }
+.placeholder-page .ph-icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.4; }
+.placeholder-page .ph-title { font-size: 1.5rem; color: #8e8ea0; margin-bottom: 0.5rem; }
+.placeholder-page .ph-desc { font-size: 0.9rem; color: #555; }
+
+/* === Toast Notification === */
+.toast-container { position: fixed; bottom: 12px; right: 12px; z-index: 99999; pointer-events: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.ngx-toastr { position: relative; overflow: hidden; width: 300px; border-radius: 6px; padding: 14px 30px 14px 48px; background-position: 14px center; background-repeat: no-repeat; background-size: 22px; box-shadow: 0 0 12px rgba(0,0,0,0.6); color: #fff; pointer-events: auto; opacity: 0; transform: translateX(40px); transition: opacity 0.3s ease, transform 0.3s ease; }
+.ngx-toastr.toast-in { opacity: 0.95; transform: translateX(0); }
+.ngx-toastr.toast-out { opacity: 0; transform: translateX(40px); }
+.toast-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 3px; }
+.toast-detail { font-size: 0.82rem; opacity: 0.88; line-height: 1.4; word-break: break-word; }
+.toast-close-btn { position: absolute; right: 7px; top: 5px; background: transparent; border: none; color: #fff; font-size: 16px; cursor: pointer; opacity: 0.6; line-height: 1; }
+.toast-close-btn:hover { opacity: 1; }
+.toast-progress { position: absolute; left: 0; bottom: 0; height: 4px; background: rgba(0,0,0,0.3); }
+.ngx-toastr.toast-success { background-color: #51A351; }
+.ngx-toastr.toast-error { background-color: #BD362F; }
+.ngx-toastr.toast-info { background-color: #2F96B4; }
+.ngx-toastr.toast-warning { background-color: #F89406; }
