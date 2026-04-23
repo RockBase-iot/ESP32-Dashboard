@@ -22,7 +22,7 @@ static String configToJson(const AppConfig &cfg) {
     doc[NVS_KEY_LAT]            = cfg.lat;
     doc[NVS_KEY_LON]            = cfg.lon;
     doc[NVS_KEY_CITY]           = cfg.city;
-    doc[NVS_KEY_TIMEZONE]       = cfg.timezone;
+    doc[NVS_KEY_TIMEZONE]       = cfg.utcOffset;
     doc[NVS_KEY_SLEEP_DURATION] = cfg.sleepDuration;
     doc[NVS_KEY_BED_TIME]       = cfg.bedTime;
     doc[NVS_KEY_WAKE_TIME]      = cfg.wakeTime;
@@ -78,7 +78,7 @@ static bool applyPatch(const String &body) {
     tryStr(NVS_KEY_LAT,           cfg.lat);
     tryStr(NVS_KEY_LON,           cfg.lon);
     tryStr(NVS_KEY_CITY,          cfg.city);
-    tryStr(NVS_KEY_TIMEZONE,      cfg.timezone);
+    tryInt(NVS_KEY_TIMEZONE,      cfg.utcOffset);
     tryInt(NVS_KEY_SLEEP_DURATION,cfg.sleepDuration);
     tryInt(NVS_KEY_BED_TIME,      cfg.bedTime);
     tryInt(NVS_KEY_WAKE_TIME,     cfg.wakeTime);

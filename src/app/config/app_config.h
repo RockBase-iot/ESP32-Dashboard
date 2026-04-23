@@ -18,7 +18,7 @@ struct AppConfig {
     String city;
 
     // Time
-    String   timezone;     // POSIX TZ string, e.g. "EST5EDT,M3.2.0,M11.1.0"
+    int      utcOffset;    // UTC offset in hours, e.g. 8 = UTC+8, -5 = UTC-5
     String   timeFormat;   // strftime format, e.g. "%H:%M"
     String   dateFormat;   // strftime format, e.g. "%a, %B %e"
     int      sleepDuration; // minutes between wake cycles

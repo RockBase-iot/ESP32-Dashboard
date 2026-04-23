@@ -349,14 +349,17 @@ void PageWeather400x300::_drawDataRows() {
         drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 3, "N/A", LEFT);
     }
 
-    // Visibility in km (API returns metres)
+    // Visibility — API returns metres; convert per unitsDist
     _gfx->setFont(&FreeSans_7pt8b);
     if (hasWeather) {
         float visKm = _weather->current.visibility / 1000.0f;
-        String visStr = String(static_cast<int>(std::round(visKm)));
-        drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 3, visStr, LEFT);
+        bool useMi = (_cfg && _cfg->unitsDist == "mi");
+        float visVal  = useMi ? visKm * 0.621371f : visKm;
+        const char *visUnit = useMi ? " mi" : " km";
+        drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 3,
+                String(static_cast<int>(std::round(visVal))), LEFT);
         _gfx->setFont(&FONT_5pt8b);
-        drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 3, " km", LEFT);
+        drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 3, visUnit, LEFT);
     } else {
         drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 3, "N/A", LEFT);
     }

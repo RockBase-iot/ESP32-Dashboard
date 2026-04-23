@@ -199,7 +199,7 @@ a { text-decoration: none; color: #4CAF50; }
     <p class="field-hint">Can't find your city? Enter coordinates manually above. <a href="https://www.latlong.net/" target="_blank" style="color:#4FC3F7;">Latitude &amp; Longitude Finder &#x2197;</a></p>
     <div class="field-grid" style="margin-top:0.85rem;">
       <span class="field-label">Timezone</span>
-      <input class="field-input" type="text" id="s_Timezone" placeholder="POSIX, e.g. CST-8 or UTC">
+      <input class="field-input" type="number" id="s_Timezone" min="-14" max="14" placeholder="e.g. 8" title="UTC offset in hours. Examples: UTC+8 → enter 8, UTC-5 → enter -5, UTC+5:30 → enter 5 (half-hour zones not supported)">
     </div>
   </div>
   <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('location')">Save</button></div>
@@ -210,8 +210,8 @@ a { text-decoration: none; color: #4CAF50; }
   <h2 class="card-title"><span class="card-icon">&#x23F0;</span>Schedule</h2>
   <div class="card-body">
     <div class="field-grid">
-      <span class="field-label">Refresh Interval</span>
-      <input class="field-input" type="number" id="s_SleepMin" min="1" max="1440" placeholder="minutes between updates">
+      <span class="field-label">Refresh Interval <span style="color:#666;font-weight:400;font-size:0.8rem;">(minutes)</span></span>
+      <input class="field-input" type="number" id="s_SleepMin" min="1" max="1440" placeholder="1–1440">
     </div>
     <div class="field-grid">
       <span class="field-label">Bed Time (hour)</span>
@@ -427,7 +427,7 @@ var CARD_FIELDS = {
     { id: 's_Lat',      key: 'Lat' },
     { id: 's_Lon',      key: 'Lon' },
     { id: 's_City',     key: 'City' },
-    { id: 's_Timezone', key: 'Timezone' },
+    { id: 's_Timezone', key: 'Timezone', int: true },
   ],
   schedule: [
     { id: 's_SleepMin', key: 'SleepMin', int: true },

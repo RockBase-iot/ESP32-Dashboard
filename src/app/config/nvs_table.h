@@ -28,8 +28,8 @@
 #define DEFAULT_WIFI_PASSWORD    "NMMiner2048"
 #define DEFAULT_LAT              "30.6667"
 #define DEFAULT_LON              "104.0667"
-#define DEFAULT_CITY             "ChengDu"
-#define DEFAULT_TIMEZONE         "CST-8"
+#define DEFAULT_CITY             "Chengdu, Sichuan, China"
+#define DEFAULT_UTC_OFFSET       8        // UTC+8 (China Standard Time)
 #define DEFAULT_SLEEP_DURATION   30       // minutes
 #define DEFAULT_BED_TIME         0        // hour (24-h)
 #define DEFAULT_WAKE_TIME        6        // hour (24-h)

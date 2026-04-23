@@ -10,8 +10,8 @@ public:
     bool connect(const String &ssid, const String &password);
 
     // Synchronize the system clock via SNTP.
-    // tz_string is a POSIX TZ string, e.g. "EST5EDT,M3.2.0,M11.1.0".
-    void syncTime(const char *tz_string);
+    // utcOffsetHours is the UTC offset in hours, e.g. 8 for UTC+8, -5 for UTC-5.
+    void syncTime(int utcOffsetHours);
 
     // Disconnect WiFi and power down the radio.
     void disconnect();

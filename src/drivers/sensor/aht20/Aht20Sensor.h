@@ -21,7 +21,7 @@ public:
         if (_ctlPin >= 0) {
             pinMode(_ctlPin, OUTPUT);
             digitalWrite(_ctlPin, HIGH);
-            delay(60); // allow sensor power rail and internal state to settle
+            delay(200); // allow sensor power rail and internal state to settle
         }
         _wire.begin(_sdaPin, _sclPin);
         _wire.setClock(100000);
