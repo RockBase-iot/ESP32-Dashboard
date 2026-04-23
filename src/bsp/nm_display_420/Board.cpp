@@ -58,8 +58,12 @@ public:
 
     void deepSleep(uint64_t microseconds) override {
         esp_sleep_enable_timer_wakeup(microseconds);
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0); // Boot button (IO0) wakes deep sleep
         esp_deep_sleep_start();
     }
+
+    uint8_t bootButtonPin() const override { return PIN_BOOT_BTN; }
+    uint8_t apButtonPin()   const override { return PIN_AP_BTN; }
 
     const char *boardName() const override { return "NM-Display-420"; }
 

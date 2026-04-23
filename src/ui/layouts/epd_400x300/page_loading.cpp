@@ -1,6 +1,6 @@
 #include "page_loading.h"
 #include "assets/fonts/FreeSans.h"
-#include "assets/icons/icons_24x24.h"
+#include "assets/icons/icons_32x32.h"
 
 void PageLoading400x300::create(Adafruit_GFX &gfx,
                                  uint16_t w, uint16_t h,
@@ -18,13 +18,13 @@ void PageLoading400x300::draw() {
     const int16_t cy = _h / 2;
 
     // 刷新图标居中
-    _gfx->drawBitmap(cx - 12, cy - 36,
-                     wi_refresh_24x24, 24, 24,
+    _gfx->drawBitmap(cx - 16, cy - 36,
+                     wi_refresh_32x32, 32, 32,
                      0xFFFF, 0x0000);
 
     // 状态文字居中
     if (_status) {
-        _gfx->setFont(&FONT_7pt8b);
+        _gfx->setFont(&FONT_9pt8b);
         _gfx->setTextColor(0x0000);
         int16_t tx, ty;
         uint16_t tw, th;

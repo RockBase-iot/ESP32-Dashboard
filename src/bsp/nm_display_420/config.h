@@ -28,3 +28,7 @@ static constexpr uint8_t PIN_EPD_PWR  = 21; // Irrelevant if wired to 3.3 V
 static constexpr int PIN_TEMP_SDA  = 39;
 static constexpr int PIN_TEMP_SCL  = 38;
 static constexpr int PIN_TEMP_CTL  = 40;
+
+// Physical buttons (external pull-up to 3.3 V; pressed = LOW).
+static constexpr uint8_t PIN_BOOT_BTN = 0;   // IO0  — Boot/BOOT key (RTC GPIO, wakes deep sleep)
+static constexpr uint8_t PIN_AP_BTN   = 45;  // IO45 — User AP config key

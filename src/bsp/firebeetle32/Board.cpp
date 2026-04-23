@@ -78,6 +78,9 @@ public:
         esp_deep_sleep_start();
     }
 
+    uint8_t bootButtonPin() const override { return 0xFF; } // not present
+    uint8_t apButtonPin()   const override { return 0xFF; } // not present
+
     const char *boardName() const override { return "FireBeetle32"; }
 
 private:

@@ -15,4 +15,8 @@ public:
 
     // Disconnect WiFi and power down the radio.
     void disconnect();
+
+    // Switch to SoftAP mode with the given SSID (open network, no password).
+    // Default IP: 192.168.4.1. Call webServer.start() after this.
+    void startAP(const String &ssid);
 };

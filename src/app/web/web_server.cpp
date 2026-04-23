@@ -175,8 +175,9 @@ void WebServer::start() {
 
     _ws.begin();
     _ws_started = true;
-    log_i(TAG_WS, "HTTP server started → http://%s/",
-          WiFi.localIP().toString().c_str());
+    IPAddress serverIP = (WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA)
+                         ? WiFi.softAPIP() : WiFi.localIP();
+    log_i(TAG_WS, "HTTP server started → http://%s/", serverIP.toString().c_str());
 }
 
 void WebServer::stop() {

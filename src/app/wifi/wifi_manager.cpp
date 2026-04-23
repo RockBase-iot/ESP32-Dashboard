@@ -50,3 +50,11 @@ void WifiManager::disconnect() {
     WiFi.disconnect(/*wifioff=*/true);
     log_i(TAG, "WiFi disconnected");
 }
+
+void WifiManager::startAP(const String &ssid) {
+    WiFi.disconnect(/*wifioff=*/true); // ensure STA mode is off
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(ssid.c_str());        // open network, no password
+    log_i(TAG, "SoftAP started: SSID=%s  IP=%s",
+          ssid.c_str(), WiFi.softAPIP().toString().c_str());
+}

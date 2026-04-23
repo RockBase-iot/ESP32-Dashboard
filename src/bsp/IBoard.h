@@ -59,6 +59,11 @@ public:
     // Enter deep sleep for the given duration.
     virtual void deepSleep(uint64_t microseconds) = 0;
 
+    // GPIO pin numbers for physical buttons (external pull-up, pressed = LOW).
+    // Returns 0xFF if this board does not have the button.
+    virtual uint8_t bootButtonPin() const = 0;  // IO0 / BOOT key (RTC GPIO, can wake deep sleep)
+    virtual uint8_t apButtonPin()   const = 0;  // User-defined AP config key
+
     // Short human-readable board identifier, e.g. "FireBeetle2-ESP32E".
     virtual const char *boardName() const = 0;
 };
