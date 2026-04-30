@@ -46,9 +46,9 @@ English | [简体中文](./README_cn.md)
 
 ## Supported Boards
 
-| Environment | MCU | Display | Resolution | Colors | Sensor |
-|---|---|---|---|---|---|
-| `nm-display-420` | ESP32-S3 | 4.2″ EPD (GDEY042Z98) | 400 × 300 | Red / Black / White | AHT20 |
+| Environment | MCU | Display | Resolution | Colors | Sensor | Notes |
+|---|---|---|---|---|---|---|
+| `nm-display-420` | ESP32-S3 | 4.2″ EPD (GDEY042Z98) | 400 × 300 | Red / Black / White | AHT20 | |
 | `dfrobot_firebeetle2_esp32e` / `firebeetle32` | ESP32 | 7.5″ EPD (GDEY075T7) | 800 × 480 | Black / White | BME280 | Planned — coming very soon, not yet tested |
 
 ---
