@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <GxEPD2_3C.h>
 #include "drivers/sensor/aht20/Aht20Sensor.h"
+#include "drivers/audio/es8311.h"
 #include <esp_sleep.h>
 
 #include "bsp/IBoard.h"
@@ -38,6 +39,15 @@ public:
     void init() override {
         Serial.begin(115200);
         // PIN_EPD_PWR is wired directly to 3.3 V on this board; no switching needed.
+
+        // Put the ES8311 codec into suspend / power-down immediately.
+        // Audio is not used in this firmware; keeping the chip active wastes ~3 mA.
+        // The codec shares the I2C bus with the AHT20 sensor (GPIO39/38).
+        // Note: Aht20Sensor uses TwoWire bus 1, so Wire (bus 0) is free here.
+        Wire.begin(PIN_TEMP_SDA, PIN_TEMP_SCL);
+        Wire.setClock(100000);
+        es8311_enter_powerdown(Wire);
+        Wire.end();
     }
 
     IEpdDriver   &epd()          override { return _epd; }

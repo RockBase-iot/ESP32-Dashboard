@@ -148,6 +148,8 @@ void PageWeather400x300::draw() {
     _gfx->setTextWrap(false);
     _gfx->setTextSize(1);
 
+    // Vertical divider removed — Y-axis line of the graph serves as separator
+
     _drawCurrentConditions();
     _drawDataRows();
     _drawForecast();
@@ -180,7 +182,7 @@ void PageWeather400x300::_drawCurrentConditions() {
         tempStr = String(static_cast<int>(std::round(tempVal)));
     }
     _gfx->setFont(&FONT_18pt8b);
-    drawStr(_gfx, 116, 60, tempStr, CENTER);
+    drawStr(_gfx, 116, 60, tempStr, CENTER, _hasAccent ? _colorAccent : CLR_BLACK);
 
     // Unit superscript: drawString(getCursorX(), 96/2-25/2+10, unitStr, LEFT) → y=46
     _gfx->setFont(&FONT_7pt8b);
@@ -203,7 +205,7 @@ void PageWeather400x300::_drawCurrentConditions() {
     //            drawString(DISP_WIDTH-2, 12, city, RIGHT, ACCENT_COLOR)
     String city = (_cfg && _cfg->city.length()) ? _cfg->city : "---";
     _gfx->setFont(&FONT_8pt8b);
-    drawStr(_gfx, DISP_W - 2, 12, city, RIGHT, CLR_BLACK);
+    drawStr(_gfx, DISP_W - 2, 12, city, RIGHT, _hasAccent ? _colorAccent : CLR_BLACK);
 
     // ── Date string ──
     // Reference: display.setFont(&FONT_6pt8b);
@@ -285,8 +287,8 @@ void PageWeather400x300::_drawDataRows() {
         sunsetStr  = parseHHMM(_weather->daily[0].sunset);
     }
     _gfx->setFont(&FreeSans_7pt8b);
-    drawStr(_gfx, 24,  VY_BASE + DATA_ROW_H * 0, sunriseStr, LEFT);
-    drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 0, sunsetStr,  LEFT);
+    drawStr(_gfx, 24,  VY_BASE + DATA_ROW_H * 0, sunriseStr, LEFT,  _hasAccent ? _colorAccent : CLR_BLACK);
+    drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 0, sunsetStr,  LEFT,  _hasAccent ? _colorAccent : CLR_BLACK);
 
     // ── Row 1: Wind | Humidity ──
     String windStr  = "--";
@@ -301,27 +303,27 @@ void PageWeather400x300::_drawDataRows() {
         windStr = String(static_cast<int>(std::round(windVal)));
     }
     _gfx->setFont(&FreeSans_7pt8b);
-    drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 1, windStr, LEFT);
+    drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 1, windStr, LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     _gfx->setFont(&FONT_5pt8b);
-    drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 1, windUnit, LEFT);
+    drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 1, windUnit, LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
 
     String humStr = "--";
     if (hasWeather)
         humStr = String(static_cast<int>(std::round(_weather->current.humidity)));
     _gfx->setFont(&FreeSans_7pt8b);
-    drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 1, humStr, LEFT);
+    drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 1, humStr, LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     _gfx->setFont(&FONT_5pt8b);
-    drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 1, "%", LEFT);
+    drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 1, "%", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
 
     // ── Row 2: Altitude | Pressure ──
     _gfx->setFont(&FreeSans_7pt8b);
     if (hasWeather && !isnan(_weather->elevation)) {
         drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 2,
-                String(static_cast<int>(std::round(_weather->elevation))), LEFT);
+                String(static_cast<int>(std::round(_weather->elevation))), LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
         _gfx->setFont(&FONT_5pt8b);
-        drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 2, " m", LEFT);
+        drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 2, " m", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     } else {
-        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 2, "--", LEFT);
+        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 2, "--", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     }
 
     String presStr  = "--";
@@ -338,17 +340,17 @@ void PageWeather400x300::_drawDataRows() {
             presStr = String(static_cast<int>(std::round(presVal)));
     }
     _gfx->setFont(&FONT_7pt8b);
-    drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 2, presStr, LEFT);
+    drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 2, presStr, LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     _gfx->setFont(&FONT_5pt8b);
-    drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 2, presUnit, LEFT);
+    drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 2, presUnit, LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
 
     // ── Row 3: Air Quality | Visibility ──
     _gfx->setFont(&FreeSans_7pt8b);
     if (hasAqi) {
         String aqiStr = String(_aqi->us_aqi);
-        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 3, aqiStr, LEFT);
+        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 3, aqiStr, LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     } else {
-        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 3, "N/A", LEFT);
+        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 3, "N/A", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     }
 
     // Visibility — API returns metres; convert per unitsDist
@@ -359,11 +361,11 @@ void PageWeather400x300::_drawDataRows() {
         float visVal  = useMi ? visKm * 0.621371f : visKm;
         const char *visUnit = useMi ? " mi" : " km";
         drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 3,
-                String(static_cast<int>(std::round(visVal))), LEFT);
+                String(static_cast<int>(std::round(visVal))), LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
         _gfx->setFont(&FONT_5pt8b);
-        drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 3, visUnit, LEFT);
+        drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 3, visUnit, LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     } else {
-        drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 3, "N/A", LEFT);
+        drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 3, "N/A", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     }
 
     // ── Row 4: Indoor Temp | Indoor Humidity (from AHT20 sensor) ──
@@ -373,17 +375,17 @@ void PageWeather400x300::_drawDataRows() {
         String tUnit = "\260C";
         if (_cfg && _cfg->unitsTemp == "F") { tVal = tVal * 9.0f / 5.0f + 32.0f; tUnit = "\260F"; }
         drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 4,
-                String(static_cast<int>(std::round(tVal))) + tUnit, LEFT);
+                String(static_cast<int>(std::round(tVal))) + tUnit, LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     } else {
-        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 4, "--", LEFT);
+        drawStr(_gfx, 24, VY_BASE + DATA_ROW_H * 4, "--", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     }
     if (!isnan(_indoorHumi)) {
         drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 4,
-                String(static_cast<int>(std::round(_indoorHumi))), LEFT);
+                String(static_cast<int>(std::round(_indoorHumi))), LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
         _gfx->setFont(&FONT_5pt8b);
-        drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 4, "%", LEFT);
+        drawStr(_gfx, _gfx->getCursorX(), VY_BASE + DATA_ROW_H * 4, "%", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     } else {
-        drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 4, "--", LEFT);
+        drawStr(_gfx, 99, VY_BASE + DATA_ROW_H * 4, "--", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     }
 
     // ── Row 5: UV Index (left) | PM2.5 (right) ──
@@ -397,9 +399,9 @@ void PageWeather400x300::_drawDataRows() {
     _gfx->setFont(&FreeSans_7pt8b);
     if (hasWeather && !_weather->daily.empty()) {
         drawStr(_gfx, 24, ROW5_VALUE_Y,
-                String(_weather->daily[0].uv_index_max, 1), LEFT);
+                String(_weather->daily[0].uv_index_max, 1), LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     } else {
-        drawStr(_gfx, 24, ROW5_VALUE_Y, "N/A", LEFT);
+        drawStr(_gfx, 24, ROW5_VALUE_Y, "N/A", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     }
     // Right: PM2.5 (μg/m³)
     _gfx->drawBitmap(75, ROW5_Y, wi_dust_24x24, 24, 24, CLR_WHITE, CLR_BLACK);
@@ -408,10 +410,10 @@ void PageWeather400x300::_drawDataRows() {
     _gfx->setFont(&FreeSans_7pt8b);
     if (hasAqi && !isnan(_aqi->pm2_5)) {
         drawStr(_gfx, 99, ROW5_VALUE_Y,
-                String(static_cast<int>(std::round(_aqi->pm2_5))), LEFT);
-        drawStr(_gfx, _gfx->getCursorX(), ROW5_VALUE_Y, " ug/m3", LEFT);
+                String(static_cast<int>(std::round(_aqi->pm2_5))), LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
+        drawStr(_gfx, _gfx->getCursorX(), ROW5_VALUE_Y, " ug/m3", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     } else {
-        drawStr(_gfx, 99, ROW5_VALUE_Y, "--", LEFT);
+        drawStr(_gfx, 99, ROW5_VALUE_Y, "--", LEFT, _hasAccent ? _colorAccent : CLR_BLACK);
     }
 }
 
@@ -477,7 +479,7 @@ void PageWeather400x300::_drawForecast() {
         }
         _gfx->setFont(&FONT_5pt8b);
         drawStr(_gfx, cx,     88, "|",    CENTER);
-        drawStr(_gfx, cx - 3, 88, hiStr,  RIGHT);
+        drawStr(_gfx, cx - 3, 88, hiStr,  RIGHT,  _hasAccent ? _colorAccent : CLR_BLACK);
         drawStr(_gfx, cx + 3, 88, loStr,  LEFT);
     }
 
@@ -547,7 +549,7 @@ void PageWeather400x300::_drawHourlyGraph() {
         int yTick = static_cast<int>(yPos0 + i * yInterval);
         int tempTick = tempBoundMax - i * yMajorStep;
         String tStr = String(tempTick) + "\260";
-        drawStr(_gfx, xPos0 - 9, yTick + 2, tStr, RIGHT, CLR_BLACK);
+        drawStr(_gfx, xPos0 - 9, yTick + 2, tStr, RIGHT, _hasAccent ? _colorAccent : CLR_BLACK);
         // Right Y-axis: precipitation probability %
         drawStr(_gfx, DISP_W - 1, yTick + 2, String(100 - i * 20) + "%", RIGHT, CLR_BLACK);
         if (i < yMajorTicks) {
@@ -593,11 +595,12 @@ void PageWeather400x300::_drawHourlyGraph() {
         int px = static_cast<int>(std::round(xPos0 + (float)i * xInterval + 0.5f * xInterval));
         int py = static_cast<int>(std::round(yPos1 - yPxPerUnit * (t - (float)tempBoundMin)));
 
-        // Draw line segment
+        // Draw line segment (temperature line in accent color when available)
         if (prevPx >= 0) {
-            _gfx->drawLine(prevPx, prevPy,     px, py,     CLR_BLACK);
-            _gfx->drawLine(prevPx, prevPy + 1, px, py + 1, CLR_BLACK);
-            _gfx->drawLine(prevPx - 1, prevPy, px - 1, py, CLR_BLACK);
+            uint16_t lc = _hasAccent ? _colorAccent : CLR_BLACK;
+            _gfx->drawLine(prevPx, prevPy,     px, py,     lc);
+            _gfx->drawLine(prevPx, prevPy + 1, px, py + 1, lc);
+            _gfx->drawLine(prevPx - 1, prevPy, px - 1, py, lc);
         }
         prevPx = px; prevPy = py;
 

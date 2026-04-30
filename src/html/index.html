@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EPD Weather Config</title>
+<title>ESP32 Dashboard Config</title>
 <style>
 /* === Reset & Base === */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -130,8 +130,8 @@ a { text-decoration: none; color: #4CAF50; }
 <div class="layout-topbar">
   <button class="topbar-menu-btn" onclick="toggleSidebar()">&#9776;</button>
   <div class="topbar-logo">
-    <span class="logo-text">EPD</span>
-    <span class="logo-sub">Weather</span>
+    <span class="logo-text">ESP32</span>
+    <span class="logo-sub">Dashboard</span>
   </div>
   <div class="topbar-info" id="topbarInfo"></div>
   <button class="btn-restart-topbar" onclick="restartLocalDevice()" title="Restart device">&#x1F504; Restart</button>
@@ -143,7 +143,7 @@ a { text-decoration: none; color: #4CAF50; }
     <li><a data-page="settings" class="nav-link active" onclick="switchPage('settings',this)"><span class="menu-icon">&#x2699;&#xFE0F;</span>Settings</a></li>
     <li><a data-page="logs" class="nav-link" onclick="switchPage('logs',this)"><span class="menu-icon">&#x1F4CB;</span>Logs</a></li>
   </ul>
-  <div class="sidebar-footer">EPD Weather Station</div>
+  <div class="sidebar-footer">ESP32 Dashboard</div>
 </div>
 
 <!-- === Mobile overlay === -->
