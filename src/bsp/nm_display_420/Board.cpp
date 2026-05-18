@@ -5,6 +5,7 @@
 #include "drivers/sensor/aht20/Aht20Sensor.h"
 #include "drivers/audio/es8311.h"
 #include <esp_sleep.h>
+#include <driver/gpio.h>
 
 #include "bsp/IBoard.h"
 #include "config.h"
@@ -40,6 +41,15 @@ public:
         Serial.begin(115200);
         // PIN_EPD_PWR is wired directly to 3.3 V on this board; no switching needed.
 
+        // External peripheral control pins — initialise to active/idle states.
+        // Release GPIO hold that may have been set before the previous deep sleep.
+        gpio_hold_dis((gpio_num_t)PIN_PA_CTRL);
+        gpio_hold_dis((gpio_num_t)PIN_LORA_RST);
+        gpio_hold_dis((gpio_num_t)PIN_LORA_NSS);
+        pinMode(PIN_PA_CTRL,  OUTPUT); digitalWrite(PIN_PA_CTRL,  HIGH); // PA enabled
+        pinMode(PIN_LORA_RST, OUTPUT); digitalWrite(PIN_LORA_RST, HIGH); // LoRa not in reset
+        pinMode(PIN_LORA_NSS, OUTPUT); digitalWrite(PIN_LORA_NSS, HIGH); // LoRa SPI deselected
+
         // Put the ES8311 codec into suspend / power-down immediately.
         // Audio is not used in this firmware; keeping the chip active wastes ~3 mA.
         // The codec shares the I2C bus with the AHT20 sensor (GPIO39/38).
@@ -67,6 +77,17 @@ public:
     }
 
     void deepSleep(uint64_t microseconds) override {
+        // Disable external peripherals before entering deep sleep to minimise leakage.
+        digitalWrite(PIN_PA_CTRL,  LOW);  // Power Amplifier off
+        digitalWrite(PIN_LORA_RST, LOW);  // Hold LoRa in reset
+        digitalWrite(PIN_LORA_NSS, HIGH); // Keep LoRa SPI CS deselected
+
+        // Latch pin levels so they are maintained while the IO power domain is off.
+        gpio_hold_en((gpio_num_t)PIN_PA_CTRL);
+        gpio_hold_en((gpio_num_t)PIN_LORA_RST);
+        gpio_hold_en((gpio_num_t)PIN_LORA_NSS);
+        gpio_deep_sleep_hold_en();
+
         esp_sleep_enable_timer_wakeup(microseconds);
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0); // Boot button (IO0) wakes deep sleep
         esp_deep_sleep_start();

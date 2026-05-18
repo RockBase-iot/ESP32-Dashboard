@@ -32,3 +32,9 @@ static constexpr int PIN_TEMP_CTL  = 40;
 // Physical buttons (external pull-up to 3.3 V; pressed = LOW).
 static constexpr uint8_t PIN_BOOT_BTN = 0;   // IO0  — Boot/BOOT key (RTC GPIO, wakes deep sleep)
 static constexpr uint8_t PIN_AP_BTN   = 45;  // IO45 — User AP config key
+
+// External peripheral power-control pins.
+// In deep sleep: PA_CTRL → LOW, LORA_RST → LOW, LORA_NSS → HIGH.
+static constexpr uint8_t PIN_PA_CTRL  = 41;  // IO41 — Power Amplifier enable (HIGH = on)
+static constexpr uint8_t PIN_LORA_RST = 12;  // IO12 — LoRa module reset   (LOW  = reset)
+static constexpr uint8_t PIN_LORA_NSS = 8;   // IO8  — LoRa SPI chip-select (HIGH = deselected)
