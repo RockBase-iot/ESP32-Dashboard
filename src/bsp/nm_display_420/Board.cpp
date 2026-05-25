@@ -97,6 +97,23 @@ public:
         pinMode(PIN_LORA_NSS, OUTPUT); digitalWrite(PIN_LORA_NSS, HIGH); // LoRa SPI CS idle
         delay(10); // let all GPIO outputs stabilise
 
+        // ── Set all other board GPIOs to high-Z (floating input, no pull) ─────
+        // Prevents ESP32 pads from sourcing or sinking current through external
+        // circuitry while the digital core is off.  EPD CS/RST have board-level
+        // pull-ups so they stay HIGH (EPD remains in hibernate) without hold.
+        // IO0 (BOOT/EXT0 wakeup) is intentionally excluded — RTC GPIO must not
+        // be reconfigured here; the wakeup subsystem owns it.
+        static const uint8_t kHiZ[] = {
+            PIN_EPD_CS,   PIN_EPD_RST,  PIN_EPD_DC,  PIN_EPD_SCK,
+            PIN_EPD_MOSI, PIN_EPD_MISO, PIN_EPD_BUSY,
+            PIN_TEMP_SDA, PIN_TEMP_SCL,
+            PIN_BATT_ADC,
+            PIN_AP_BTN,
+        };
+        for (uint8_t p : kHiZ) {
+            pinMode(p, INPUT); // INPUT = floating, no pull-up/pull-down
+        }
+
         // ── Latch driven pins across deep sleep ───────────────────────────────
         // Note: EPD SPI pins (CS/RST/DC/MOSI/SCK) are NOT held here.
         // The board has pull-ups on CS and RST that keep them HIGH (EPD stays in
