@@ -10,12 +10,14 @@ static constexpr uint16_t DISP_HEIGHT = 300;
 
 // ─── Pinout ───────────────────────────────────────────────────────────────
 
-// ADC pin used to measure battery voltage.
-static constexpr uint8_t PIN_BAT_ADC  = A0;
+// Battery voltage ADC — rev2: IO3 is the ADC input, gated by PIN_ADC_EN.
+static constexpr uint8_t PIN_BATT_ADC  = 3;   // IO3  — Battery voltage sense (ADC1_CH2)
+static constexpr uint8_t PIN_ADC_EN    = 43;  // IO43 — Battery ADC circuit enable (HIGH = on)
+static constexpr uint8_t BATT_ADC_DIV  = 2;   // Divider ratio: ADC_mV × BATT_ADC_DIV = battery mV
 
 // SPI pins for E-Paper Driver Board.
 static constexpr uint8_t PIN_EPD_BUSY = 6;
-static constexpr uint8_t PIN_EPD_CS   = 3;
+static constexpr uint8_t PIN_EPD_CS   = 46; // IO46 — rev2: IO3 freed for battery ADC
 static constexpr uint8_t PIN_EPD_RST  = 5;
 static constexpr uint8_t PIN_EPD_DC   = 4;
 static constexpr uint8_t PIN_EPD_SCK  = 2;
@@ -34,7 +36,10 @@ static constexpr uint8_t PIN_BOOT_BTN = 0;   // IO0  — Boot/BOOT key (RTC GPIO
 static constexpr uint8_t PIN_AP_BTN   = 45;  // IO45 — User AP config key
 
 // External peripheral power-control pins.
-// In deep sleep: PA_CTRL → LOW, LORA_RST → LOW, LORA_NSS → HIGH.
+// Deep-sleep latch targets: PA_CTRL→LOW, LORA_EN→LOW, CODEC_EN→LOW, ADC_EN→LOW,
+//   TEMP_CTL→LOW, LORA_RST→LOW, LORA_NSS→HIGH.
 static constexpr uint8_t PIN_PA_CTRL  = 41;  // IO41 — Power Amplifier enable (HIGH = on)
+static constexpr uint8_t PIN_LORA_EN  = 47;  // IO47 — LoRa module power enable (HIGH = on) [rev2]
+static constexpr uint8_t PIN_CODEC_EN = 44;  // IO44 — ES8311 codec power enable (HIGH = on) [rev2]
 static constexpr uint8_t PIN_LORA_RST = 12;  // IO12 — LoRa module reset   (LOW  = reset)
 static constexpr uint8_t PIN_LORA_NSS = 8;   // IO8  — LoRa SPI chip-select (HIGH = deselected)
