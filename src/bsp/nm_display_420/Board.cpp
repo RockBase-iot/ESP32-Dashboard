@@ -37,18 +37,26 @@ class Board final : public IBoard {
 public:
     void init() override {
         Serial.begin(115200);
-        // PIN_EPD_PWR is wired directly to 3.3 V on this board; no switching needed.
 
         // Release GPIO hold that may have been set before the previous deep sleep,
         // then (re-)initialise each pin to its idle/off state.
         // Peripheral enable / control pins.
         gpio_hold_dis((gpio_num_t)PIN_PA_CTRL);
         gpio_hold_dis((gpio_num_t)PIN_LORA_EN);
+        gpio_hold_dis((gpio_num_t)PIN_LORA_NSS);
+        gpio_hold_dis((gpio_num_t)PIN_LORA_SCK);
+        gpio_hold_dis((gpio_num_t)PIN_LORA_MOSI);
+        gpio_hold_dis((gpio_num_t)PIN_LORA_MISO);
+        gpio_hold_dis((gpio_num_t)PIN_LORA_RST);
+        gpio_hold_dis((gpio_num_t)PIN_LORA_BUSY);
+        gpio_hold_dis((gpio_num_t)PIN_LORA_DIO1);
+        gpio_hold_dis((gpio_num_t)PIN_TF_CS);
+        gpio_hold_dis((gpio_num_t)PIN_EPD_RST);
+        gpio_hold_dis((gpio_num_t)PIN_TEMP_SDA);
+        gpio_hold_dis((gpio_num_t)PIN_TEMP_SCL);
         gpio_hold_dis((gpio_num_t)PIN_CODEC_EN);
         gpio_hold_dis((gpio_num_t)PIN_ADC_EN);
         gpio_hold_dis((gpio_num_t)PIN_TEMP_CTL);
-        gpio_hold_dis((gpio_num_t)PIN_LORA_RST);
-        gpio_hold_dis((gpio_num_t)PIN_LORA_NSS);
 
         // rev2: hardware enable pins — keep all modules powered off until needed.
         // ES8311 codec: hardware power cut via PIN_CODEC_EN; no I2C powerdown required.
@@ -58,8 +66,13 @@ public:
 
         // Legacy control pins — idle/off states.
         pinMode(PIN_PA_CTRL,  OUTPUT); digitalWrite(PIN_PA_CTRL,  HIGH); // PA enabled (audio idle)
-        pinMode(PIN_LORA_RST, OUTPUT); digitalWrite(PIN_LORA_RST, HIGH); // LoRa not in reset
-        pinMode(PIN_LORA_NSS, OUTPUT); digitalWrite(PIN_LORA_NSS, HIGH); // LoRa SPI deselected
+        pinMode(PIN_LORA_NSS,  INPUT); // LoRa SPI chip-select high-Z while module is powered off
+        pinMode(PIN_LORA_SCK,  INPUT); // LoRa SPI clock high-Z while module is powered off
+        pinMode(PIN_LORA_MOSI, INPUT); // LoRa SPI MOSI high-Z while module is powered off
+        pinMode(PIN_LORA_MISO, INPUT); // LoRa SPI MISO high-Z while module is powered off
+        pinMode(PIN_LORA_RST,  INPUT); // LoRa reset high-Z while module is powered off
+        pinMode(PIN_LORA_BUSY, INPUT); // LoRa BUSY high-Z while module is powered off
+        pinMode(PIN_LORA_DIO1, INPUT); // LoRa DIO1 high-Z while module is powered off
         // PIN_TEMP_CTL is driven HIGH by Aht20Sensor::begin() when the sensor is used.
     }
 
@@ -85,28 +98,28 @@ public:
     }
 
     void deepSleep(uint64_t microseconds) override {
-        // ── Power off all external module enable pins ─────────────────────────
-        // rev2 hardware enable pins (active HIGH — drive LOW to cut power):
-        pinMode(PIN_LORA_EN,  OUTPUT); digitalWrite(PIN_LORA_EN,  LOW);  // LoRa off
-        pinMode(PIN_CODEC_EN, OUTPUT); digitalWrite(PIN_CODEC_EN, LOW);  // ES8311 off
-        pinMode(PIN_ADC_EN,   OUTPUT); digitalWrite(PIN_ADC_EN,   LOW);  // ADC circuit off
-        pinMode(PIN_TEMP_CTL, OUTPUT); digitalWrite(PIN_TEMP_CTL, LOW);  // AHT20 off
-        // Legacy control pins:
-        pinMode(PIN_PA_CTRL,  OUTPUT); digitalWrite(PIN_PA_CTRL,  LOW);  // PA off
-        pinMode(PIN_LORA_RST, INPUT);  // LoRa reset pin high-Z during deep sleep
-        pinMode(PIN_LORA_NSS, INPUT);  // LoRa NSS pin high-Z during deep sleep
+        // ── Drive all power-enable pins LOW (modules off) ─────────────────────
+        pinMode(PIN_LORA_EN,   OUTPUT); digitalWrite(PIN_LORA_EN,   LOW); // IO47 — LoRa power on (held LOW)
+        pinMode(PIN_CODEC_EN,  OUTPUT); digitalWrite(PIN_CODEC_EN,  LOW);  // IO44 — ES8311 off
+        pinMode(PIN_ADC_EN,    OUTPUT); digitalWrite(PIN_ADC_EN,    LOW);  // IO43 — ADC circuit off
+        pinMode(PIN_TEMP_CTL,  OUTPUT); digitalWrite(PIN_TEMP_CTL,  LOW);  // IO40 — AHT20 off
+        pinMode(PIN_PA_CTRL,   OUTPUT); digitalWrite(PIN_PA_CTRL,   LOW);  // IO41 — PA off
+        pinMode(PIN_LORA_SCK,  OUTPUT); digitalWrite(PIN_LORA_SCK,  LOW);  // IO9  — LoRa/TF CLK
+        pinMode(PIN_LORA_RST,  OUTPUT); digitalWrite(PIN_LORA_RST,  LOW);  // IO12 — LoRa RST
+        pinMode(PIN_LORA_BUSY, OUTPUT); digitalWrite(PIN_LORA_BUSY, LOW);  // IO13 — LoRa BUSY
+        pinMode(PIN_LORA_DIO1, OUTPUT); digitalWrite(PIN_LORA_DIO1, LOW);  // IO14 — LoRa DIO1
+
         delay(10); // let all GPIO outputs stabilise
 
-        // ── Set all other board GPIOs to high-Z (floating input, no pull) ─────
-        // Prevents ESP32 pads from sourcing or sinking current through external
-        // circuitry while the digital core is off.  EPD CS/RST have board-level
-        // pull-ups so they stay HIGH (EPD remains in hibernate) without hold.
-        // IO0 (BOOT/EXT0 wakeup) is intentionally excluded — RTC GPIO must not
+        // ── Set remaining GPIOs to high-Z (floating input, no pull) ──────────
+        // IO0 (BOOT / EXT0 wakeup) is intentionally excluded — RTC GPIO must not
         // be reconfigured here; the wakeup subsystem owns it.
         static const uint8_t kHiZ[] = {
-            PIN_EPD_CS,   PIN_EPD_RST,  PIN_EPD_DC,  PIN_EPD_SCK,
-            PIN_EPD_MOSI, PIN_EPD_MISO, PIN_EPD_BUSY,
-            PIN_TEMP_SDA, PIN_TEMP_SCL,
+            PIN_EPD_BUSY, PIN_EPD_CS,  PIN_EPD_DC,  PIN_EPD_SCK,  PIN_EPD_MOSI,  PIN_EPD_RST, // EPD SPI
+            PIN_LORA_NSS, PIN_LORA_MOSI, PIN_LORA_MISO,                           // LoRa SPI
+            PIN_TF_CS,                                                             // TF CS
+            PIN_TEMP_SDA, PIN_TEMP_SCL,                                            // I2C bus
+            PIN_I2S_SCLK, PIN_I2S_ASDOUT, PIN_I2S_LRCK, PIN_I2S_DSIN, PIN_I2S_MCLK, // I2S
             PIN_BATT_ADC,
             PIN_AP_BTN,
         };
@@ -114,18 +127,18 @@ public:
             pinMode(p, INPUT); // INPUT = floating, no pull-up/pull-down
         }
 
-        // ── Latch driven pins across deep sleep ───────────────────────────────
-        // Note: EPD SPI pins (CS/RST/DC/MOSI/SCK) are NOT held here.
-        // The board has pull-ups on CS and RST that keep them HIGH (EPD stays in
-        // hibernate) while the digital core is off. Calling SPI.end() + gpio_hold
-        // on SPI pins interferes with WiFi modem power-domain shutdown and causes
-        // elevated deep-sleep current (~40 mA); this mirrors the working approach
-        // used in NM-Display-420/src/test_runner.cpp _enterDeepSleep().
-        gpio_hold_en((gpio_num_t)PIN_LORA_EN);
+        // ── Latch driven output pins across deep sleep ────────────────────────
+        // Latched LOW:
         gpio_hold_en((gpio_num_t)PIN_CODEC_EN);
         gpio_hold_en((gpio_num_t)PIN_ADC_EN);
         gpio_hold_en((gpio_num_t)PIN_TEMP_CTL);
         gpio_hold_en((gpio_num_t)PIN_PA_CTRL);
+        gpio_hold_en((gpio_num_t)PIN_LORA_SCK);
+        gpio_hold_en((gpio_num_t)PIN_LORA_RST);
+        gpio_hold_en((gpio_num_t)PIN_LORA_BUSY);
+        gpio_hold_en((gpio_num_t)PIN_LORA_DIO1);
+        // Latched HIGH:
+        gpio_hold_en((gpio_num_t)PIN_LORA_EN);
         gpio_deep_sleep_hold_en(); // ESP32-S3: retain latches when IO domain powers off
 
         Serial.flush(); // drain USB CDC TX buffer before digital core powers off

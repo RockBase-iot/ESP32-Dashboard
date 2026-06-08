@@ -21,9 +21,8 @@ static constexpr uint8_t PIN_EPD_CS   = 46; // IO46 — rev2: IO3 freed for batt
 static constexpr uint8_t PIN_EPD_RST  = 5;
 static constexpr uint8_t PIN_EPD_DC   = 4;
 static constexpr uint8_t PIN_EPD_SCK  = 2;
-static constexpr uint8_t PIN_EPD_MISO = 10; // Not used (display is write-only)
+static constexpr uint8_t PIN_EPD_MISO = GPIO_NUM_NC; // Not used (display is write-only)
 static constexpr uint8_t PIN_EPD_MOSI = 1;
-static constexpr uint8_t PIN_EPD_PWR  = 21; // Irrelevant if wired to 3.3 V
 
 // I2C pins for on-board temperature/humidity sensor (AHT20).
 // TEMP_CTL (GPIO40) is a power-enable pin: drive HIGH before accessing the sensor.
@@ -37,9 +36,29 @@ static constexpr uint8_t PIN_AP_BTN   = 45;  // IO45 — User AP config key
 
 // External peripheral power-control pins.
 // Deep-sleep latch targets: PA_CTRL→LOW, LORA_EN→LOW, CODEC_EN→LOW, ADC_EN→LOW,
-//   TEMP_CTL→LOW, LORA_RST→LOW, LORA_NSS→HIGH.
-static constexpr uint8_t PIN_PA_CTRL  = 41;  // IO41 — Power Amplifier enable (HIGH = on)
-static constexpr uint8_t PIN_LORA_EN  = 47;  // IO47 — LoRa module power enable (HIGH = on) [rev2]
-static constexpr uint8_t PIN_CODEC_EN = 44;  // IO44 — ES8311 codec power enable (HIGH = on) [rev2]
-static constexpr uint8_t PIN_LORA_RST = 12;  // IO12 — LoRa module reset   (LOW  = reset)
-static constexpr uint8_t PIN_LORA_NSS = 8;   // IO8  — LoRa SPI chip-select (HIGH = deselected)
+//   TEMP_CTL→LOW.
+static constexpr uint8_t PIN_PA_CTRL   = 41;  // IO41 — Power Amplifier enable (HIGH = on)
+static constexpr uint8_t PIN_LORA_EN    = 47;  // IO47 — LoRa module power enable (HIGH = on) [rev2]
+
+// LoRa module signal pins. Keep all of these high-Z when the module is not in use.
+static constexpr uint8_t PIN_LORA_NSS   = 8;   // IO8  — LoRa SPI chip-select
+static constexpr uint8_t PIN_LORA_SCK   = 9;   // IO9  — LoRa SPI clock
+static constexpr uint8_t PIN_LORA_MOSI  = 10;  // IO10 — LoRa SPI MOSI
+static constexpr uint8_t PIN_LORA_MISO  = 11;  // IO11 — LoRa SPI MISO
+static constexpr uint8_t PIN_LORA_RST   = 12;  // IO12 — LoRa module reset
+static constexpr uint8_t PIN_LORA_BUSY  = 13;  // IO13 — LoRa BUSY
+static constexpr uint8_t PIN_LORA_DIO1   = 14;  // IO14 — LoRa DIO1 / IRQ
+static constexpr uint8_t PIN_CODEC_EN    = 44;  // IO44 — ES8311 codec power enable (HIGH = on) [rev2]
+
+// I2S / audio codec signal pins — high-Z when not in use.
+static constexpr uint8_t PIN_I2S_SCLK   = 15;  // IO15 — I2S bit clock
+static constexpr uint8_t PIN_I2S_ASDOUT = 16;  // IO16 — I2S data out (codec → ESP)
+static constexpr uint8_t PIN_I2S_LRCK   = 17;  // IO17 — I2S left/right clock
+static constexpr uint8_t PIN_I2S_DSIN   = 18;  // IO18 — I2S data in  (ESP → codec)
+static constexpr uint8_t PIN_I2S_MCLK   = 21;  // IO21 — I2S master clock
+
+// TF card SPI pins — shares IO9/10/11 with the LoRa SPI bus.
+static constexpr uint8_t PIN_TF_CS      = 7;              // IO7  — TF card chip-select (HIGH = deselected)
+static constexpr uint8_t PIN_TF_CLK     = PIN_LORA_SCK;   // IO9  — TF card SPI clock   (= LORA_SCK)
+static constexpr uint8_t PIN_TF_CMD     = PIN_LORA_MOSI;  // IO10 — TF card MOSI/CMD    (= LORA_MOSI)
+static constexpr uint8_t PIN_TF_DAT0    = PIN_LORA_MISO;  // IO11 — TF card MISO/DAT0   (= LORA_MISO)
