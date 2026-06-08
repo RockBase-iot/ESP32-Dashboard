@@ -93,8 +93,8 @@ public:
         pinMode(PIN_TEMP_CTL, OUTPUT); digitalWrite(PIN_TEMP_CTL, LOW);  // AHT20 off
         // Legacy control pins:
         pinMode(PIN_PA_CTRL,  OUTPUT); digitalWrite(PIN_PA_CTRL,  LOW);  // PA off
-        pinMode(PIN_LORA_RST, OUTPUT); digitalWrite(PIN_LORA_RST, LOW);  // LoRa in reset
-        pinMode(PIN_LORA_NSS, OUTPUT); digitalWrite(PIN_LORA_NSS, HIGH); // LoRa SPI CS idle
+        pinMode(PIN_LORA_RST, INPUT);  // LoRa reset pin high-Z during deep sleep
+        pinMode(PIN_LORA_NSS, INPUT);  // LoRa NSS pin high-Z during deep sleep
         delay(10); // let all GPIO outputs stabilise
 
         // ── Set all other board GPIOs to high-Z (floating input, no pull) ─────
@@ -126,8 +126,6 @@ public:
         gpio_hold_en((gpio_num_t)PIN_ADC_EN);
         gpio_hold_en((gpio_num_t)PIN_TEMP_CTL);
         gpio_hold_en((gpio_num_t)PIN_PA_CTRL);
-        gpio_hold_en((gpio_num_t)PIN_LORA_RST);
-        gpio_hold_en((gpio_num_t)PIN_LORA_NSS);
         gpio_deep_sleep_hold_en(); // ESP32-S3: retain latches when IO domain powers off
 
         Serial.flush(); // drain USB CDC TX buffer before digital core powers off
