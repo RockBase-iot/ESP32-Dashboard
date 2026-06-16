@@ -11,10 +11,13 @@
 #include "bsp/IBoard.h"
 #include "config.h"
 
-// Keep legacy behavior by default: fixed SSD1683.
-// Set to 1 only when runtime UC8179/SSD1683 auto-detect is desired.
-#ifndef EPD_RUNTIME_SWITCH
-#define EPD_RUNTIME_SWITCH 0
+// Driver selection mode for nm-display-420 bring-up:
+//   0 = force SSD1683
+//   1 = force UC8179
+//   2 = runtime auto-detect (BUSY polarity)
+// Current phase: force UC8179 for dedicated debugging.
+#ifndef EPD_DRIVER_MODE
+#define EPD_DRIVER_MODE 1
 #endif
 
 // ─── EPD display objects ────────────────────────────────────────────────────
@@ -120,17 +123,21 @@ public:
         gpio_hold_dis((gpio_num_t)PIN_ADC_EN);
         gpio_hold_dis((gpio_num_t)PIN_TEMP_CTL);
 
-    #if EPD_RUNTIME_SWITCH
+    #if EPD_DRIVER_MODE == 2
         // Detect only after GPIO hold is released, otherwise EPD RST/BUSY may
         // stay latched from previous deep sleep and cause wrong driver selection.
         _is_uc8179  = detectIsUC8179();
         _active_gfx = _is_uc8179 ? static_cast<Adafruit_GFX *>(&_uc8179_disp)
                      : static_cast<Adafruit_GFX *>(&_ssd1683_disp);
-        ESP_LOGI(kEpdTag, "runtime select: %s", _is_uc8179 ? "UC8179" : "SSD1683");
+        ESP_LOGI(kEpdTag, "driver mode=AUTO, select: %s", _is_uc8179 ? "UC8179" : "SSD1683");
+    #elif EPD_DRIVER_MODE == 1
+        _is_uc8179  = true;
+        _active_gfx = static_cast<Adafruit_GFX *>(&_uc8179_disp);
+        ESP_LOGI(kEpdTag, "driver mode=FORCE_UC8179");
     #else
         _is_uc8179  = false;
         _active_gfx = static_cast<Adafruit_GFX *>(&_ssd1683_disp);
-        ESP_LOGI(kEpdTag, "runtime switch disabled, force SSD1683");
+        ESP_LOGI(kEpdTag, "driver mode=FORCE_SSD1683");
     #endif
 
         // rev2: hardware enable pins — keep all modules powered off until needed.

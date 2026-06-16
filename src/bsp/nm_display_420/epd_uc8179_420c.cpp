@@ -2,6 +2,7 @@
 // Adapted from GxEPD2_750c_GDEY075Z08 for 400×300.
 
 #include "epd_uc8179_420c.h"
+#include <esp_log.h>
 
 // ─── Constructor ──────────────────────────────────────────────────────────
 GxEPD2_420c_NM_UC8179::GxEPD2_420c_NM_UC8179(int16_t cs, int16_t dc, int16_t rst, int16_t busy)
@@ -296,6 +297,7 @@ void GxEPD2_420c_NM_UC8179::_PowerOff()
 // ─── Init ─────────────────────────────────────────────────────────────────
 void GxEPD2_420c_NM_UC8179::_InitDisplay()
 {
+    ESP_LOGI("UC8179_420c", "InitDisplay start");
     if (_hibernating) _reset();
     // UC8179 initialisation sequence for 4.2" 400×300 3-color panel
     _writeCommand(0x01); // POWER SETTING
@@ -323,11 +325,13 @@ void GxEPD2_420c_NM_UC8179::_InitDisplay()
     _writeCommand(0x60); // TCON SETTING
     _writeData(0x22);
     _init_display_done = true;
+    ESP_LOGI("UC8179_420c", "InitDisplay done");
 }
 
 // ─── Update ───────────────────────────────────────────────────────────────
 void GxEPD2_420c_NM_UC8179::_Update_Full()
 {
+    ESP_LOGI("UC8179_420c", "Update full start");
     _writeCommand(0x00); // PANEL SETTING
     _writeData(0x0f);    // LUT from OTP
     _writeCommand(0x50); // VCOM AND DATA INTERVAL SETTING
@@ -342,4 +346,5 @@ void GxEPD2_420c_NM_UC8179::_Update_Full()
     _writeCommand(0x12); // display refresh
     _waitWhileBusy("_Update_Full", full_refresh_time);
     _PowerOff();
+    ESP_LOGI("UC8179_420c", "Update full done");
 }
