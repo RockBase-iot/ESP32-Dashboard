@@ -4,6 +4,14 @@
 #include "epd_uc8179_420c.h"
 #include <esp_log.h>
 
+static inline uint8_t remapPlaneData(uint8_t command, uint8_t data)
+{
+    // On this 4.2" UC8179 panel variant, RED plane polarity is opposite,
+    // while B/W plane polarity matches the SSD1683 path.
+    if (command == 0x13) return ~data;
+    return data;
+}
+
 // ─── Constructor ──────────────────────────────────────────────────────────
 GxEPD2_420c_NM_UC8179::GxEPD2_420c_NM_UC8179(int16_t cs, int16_t dc, int16_t rst, int16_t busy)
     : GxEPD2_EPD(cs, dc, rst, busy, LOW, 10000000, WIDTH, HEIGHT, panel, hasColor, hasPartialUpdate, hasFastPartialUpdate)
@@ -41,8 +49,9 @@ void GxEPD2_420c_NM_UC8179::_writeScreenBuffer(uint8_t command, uint8_t value)
     _setPartialRamArea(0, 0, WIDTH, HEIGHT);
     _writeCommand(command);
     _startTransfer();
+    uint8_t tx = remapPlaneData(command, value);
     for (uint32_t i = 0; i < uint32_t(WIDTH) * uint32_t(HEIGHT) / 8; i++)
-        _transfer(value);
+        _transfer(tx);
     _endTransfer();
 }
 
@@ -92,7 +101,7 @@ void GxEPD2_420c_NM_UC8179::_writeImage(uint8_t command, const uint8_t bitmap[],
                 data = bitmap[idx];
             }
             if (invert) data = ~data;
-            _transfer(data);
+            _transfer(remapPlaneData(command, data));
         }
     }
     _endTransfer();
@@ -153,7 +162,7 @@ void GxEPD2_420c_NM_UC8179::_writeImagePart(uint8_t command, const uint8_t bitma
                 data = bitmap[idx];
             }
             if (invert) data = ~data;
-            _transfer(data);
+            _transfer(remapPlaneData(command, data));
         }
     }
     _endTransfer();
