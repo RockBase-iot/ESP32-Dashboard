@@ -1,36 +1,93 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <GxEPD2_3C.h>
+#include "epd_uc8179_420c.h"
 #include "drivers/sensor/aht20/Aht20Sensor.h"
 #include <esp_sleep.h>
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
+#include <esp_log.h>
 
 #include "bsp/IBoard.h"
 #include "config.h"
 
-// ─── EPD display object ─────────────────────────────────────────────────────
-// 4.2" Red/Black/White EPD (GxEPD2_420c_GDEY042Z98), 400×300 px.
-// GxEPD2 1.6.x: pins are passed to the driver class, which is then wrapped.
-static GxEPD2_420c_GDEY042Z98 _epd_driver(
-    /*CS=*/   PIN_EPD_CS,
-    /*DC=*/   PIN_EPD_DC,
-    /*RST=*/  PIN_EPD_RST,
-    /*BUSY=*/ PIN_EPD_BUSY
-);
+// Keep legacy behavior by default: fixed SSD1683.
+// Set to 1 only when runtime UC8179/SSD1683 auto-detect is desired.
+#ifndef EPD_RUNTIME_SWITCH
+#define EPD_RUNTIME_SWITCH 0
+#endif
+
+// ─── EPD display objects ────────────────────────────────────────────────────
+// Two driver stacks are always available; the active one is chosen at runtime
+// by probing BUSY polarity after a hardware reset.
+//   BUSY=HIGH → SSD1683 (GDEY042Z98, default)
+//   BUSY=LOW  → UC8179  (alternative panel)
+
+static GxEPD2_420c_GDEY042Z98 _ssd1683_drv(
+    PIN_EPD_CS, PIN_EPD_DC, PIN_EPD_RST, PIN_EPD_BUSY);
 static GxEPD2_3C<GxEPD2_420c_GDEY042Z98,
-                 GxEPD2_420c_GDEY042Z98::HEIGHT / 2> _display(_epd_driver);
+                 GxEPD2_420c_GDEY042Z98::HEIGHT / 2> _ssd1683_disp(_ssd1683_drv);
+
+static GxEPD2_420c_NM_UC8179 _uc8179_drv(
+    PIN_EPD_CS, PIN_EPD_DC, PIN_EPD_RST, PIN_EPD_BUSY);
+static GxEPD2_3C<GxEPD2_420c_NM_UC8179,
+                 GxEPD2_420c_NM_UC8179::HEIGHT / 2> _uc8179_disp(_uc8179_drv);
+
+static bool _is_uc8179 = false;   // set in Board::init()
+static Adafruit_GFX *_active_gfx = &_ssd1683_disp;  // default
+static const char *kEpdTag = "EPDDetect";
+
+// ─── Chip detection (BUSY polarity after hardware reset) ──────────────────
+static bool detectIsUC8179()
+{
+    // Keep BUSY biased high first; if the panel is not actively driving yet,
+    // this avoids a floating-low false-positive.
+    pinMode(PIN_EPD_BUSY, INPUT_PULLUP);
+    delay(2);
+
+    pinMode(PIN_EPD_RST, OUTPUT);
+    digitalWrite(PIN_EPD_RST, HIGH);
+    delay(5);
+    digitalWrite(PIN_EPD_RST, LOW);
+    delay(2);
+    digitalWrite(PIN_EPD_RST, HIGH);
+
+    pinMode(PIN_EPD_BUSY, INPUT_PULLUP);
+
+    // Sample immediately after reset release.
+    // UC8179 is accepted only on a strong/consistent LOW pattern.
+    // Any ambiguous pattern defaults to SSD1683 to preserve compatibility.
+    uint8_t lowCount = 0;
+    uint8_t highCount = 0;
+    for (uint8_t i = 0; i < 20; ++i) {
+        if (digitalRead(PIN_EPD_BUSY) == LOW) lowCount++;
+        else highCount++;
+        delayMicroseconds(500);
+    }
+
+    // Require very high confidence to switch to UC8179.
+    return (lowCount >= 18 && highCount <= 2);
+}
 
 // ─── EpdDriver adapter ────────────────────────────────────────────────────
 class EpdDriver final : public IEpdDriver {
 public:
     void init(bool initialPowerOn) override {
         SPI.begin(PIN_EPD_SCK, PIN_EPD_MISO, PIN_EPD_MOSI, PIN_EPD_CS);
-        _display.init(115200, initialPowerOn);
+        if (_is_uc8179) _uc8179_disp.init(115200, initialPowerOn);
+        else            _ssd1683_disp.init(115200, initialPowerOn);
     }
-    void hibernate() override { _display.hibernate(); }
-    void firstPage() override { _display.firstPage(); }
-    bool nextPage() override  { return _display.nextPage(); }
+    void hibernate() override {
+        if (_is_uc8179) _uc8179_disp.hibernate();
+        else            _ssd1683_disp.hibernate();
+    }
+    void firstPage() override {
+        if (_is_uc8179) _uc8179_disp.firstPage();
+        else            _ssd1683_disp.firstPage();
+    }
+    bool nextPage() override {
+        return _is_uc8179 ? _uc8179_disp.nextPage() : _ssd1683_disp.nextPage();
+    }
 };
 
 // ─── Board implementation ─────────────────────────────────────────────────
@@ -63,6 +120,19 @@ public:
         gpio_hold_dis((gpio_num_t)PIN_ADC_EN);
         gpio_hold_dis((gpio_num_t)PIN_TEMP_CTL);
 
+    #if EPD_RUNTIME_SWITCH
+        // Detect only after GPIO hold is released, otherwise EPD RST/BUSY may
+        // stay latched from previous deep sleep and cause wrong driver selection.
+        _is_uc8179  = detectIsUC8179();
+        _active_gfx = _is_uc8179 ? static_cast<Adafruit_GFX *>(&_uc8179_disp)
+                     : static_cast<Adafruit_GFX *>(&_ssd1683_disp);
+        ESP_LOGI(kEpdTag, "runtime select: %s", _is_uc8179 ? "UC8179" : "SSD1683");
+    #else
+        _is_uc8179  = false;
+        _active_gfx = static_cast<Adafruit_GFX *>(&_ssd1683_disp);
+        ESP_LOGI(kEpdTag, "runtime switch disabled, force SSD1683");
+    #endif
+
         // rev2: hardware enable pins — keep all modules powered off until needed.
         // ES8311 codec: hardware power cut via PIN_CODEC_EN; no I2C powerdown required.
         pinMode(PIN_LORA_EN,  OUTPUT); digitalWrite(PIN_LORA_EN,  LOW);  // LoRa off
@@ -82,7 +152,7 @@ public:
     }
 
     IEpdDriver   &epd()          override { return _epd; }
-    Adafruit_GFX &gfx()          override { return _display; }
+    Adafruit_GFX &gfx()          override { return *_active_gfx; }
     uint16_t      dispWidth()  const override { return DISP_WIDTH; }
     uint16_t      dispHeight() const override { return DISP_HEIGHT; }
     uint16_t      colorBlack() const override { return GxEPD_BLACK; }

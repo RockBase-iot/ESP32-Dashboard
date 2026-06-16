@@ -18,6 +18,7 @@ RTC_DATA_ATTR uint8_t DashboardApp::_failCount = 0;
 RTC_DATA_ATTR bool    DashboardApp::_coldBoot  = true;
 RTC_DATA_ATTR bool    DashboardApp::_stayAwake = false;
 RTC_DATA_ATTR bool    DashboardApp::_apMode    = false;
+RTC_DATA_ATTR bool    DashboardApp::_sensorReady = false;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Phase 0 — Wakeup detection
@@ -59,10 +60,11 @@ void DashboardApp::_initHardware(IBoard &board, bool coldBoot) {
     board.epd().init(/*initialPowerOn=*/coldBoot);
     log_i(TAG, "EPD init done (%dx%d)", board.dispWidth(), board.dispHeight());
 
+    _sensorReady = false;
     if (board.getTempSensor()) {
-        bool ok = board.getTempSensor()->begin();
+        _sensorReady = board.getTempSensor()->begin();
         log_i(TAG, "Sensor %s init: %s", board.getTempSensor()->typeName(),
-              ok ? "OK" : "FAILED");
+              _sensorReady ? "OK" : "FAILED");
     }
 }
 
@@ -183,7 +185,7 @@ void DashboardApp::_renderWeather(IBoard &board, WeatherClass &weather,
     page.setWeatherData(weather.weather(), weather.airQuality(), loc, cfg);
     page.setLocalIP(localIP);
 
-    if (board.getTempSensor()) {
+    if (board.getTempSensor() && _sensorReady) {
         float indoorTemp = NAN, indoorHumi = NAN, indoorPres = NAN;
         if (board.getTempSensor()->read(indoorTemp, indoorHumi, indoorPres)) {
             log_i(TAG, "Indoor: %.1f°C  %.0f%%", indoorTemp, indoorHumi);
@@ -191,6 +193,8 @@ void DashboardApp::_renderWeather(IBoard &board, WeatherClass &weather,
         } else {
             log_e(TAG, "Indoor sensor read failed");
         }
+    } else if (board.getTempSensor() && !_sensorReady) {
+        log_w(TAG, "Indoor sensor disabled (init failed)");
     }
 
     board.epd().firstPage();

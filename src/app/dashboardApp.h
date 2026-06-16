@@ -34,6 +34,7 @@ private:
     static bool    _coldBoot;   // true only on first power-on
     static bool    _stayAwake;  // short press: 5-min web portal
     static bool    _apMode;     // long press:  AP config mode
+    static bool    _sensorReady; // true only after sensor begin() succeeds
 
     // ── Phase helpers (called in order from run()) ─────────────────────────
 
