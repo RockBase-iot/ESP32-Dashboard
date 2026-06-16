@@ -15,16 +15,20 @@
 //   0 = force SSD1683
 //   1 = force UC8179
 //   2 = runtime auto-detect (BUSY polarity)
-// Current phase: force UC8179 for dedicated debugging.
+// Current phase: runtime auto-detect.
 #ifndef EPD_DRIVER_MODE
-#define EPD_DRIVER_MODE 1
+#define EPD_DRIVER_MODE 2
+#endif
+
+#ifndef NM420_ENABLE_TEMP_SENSOR
+#define NM420_ENABLE_TEMP_SENSOR 1
 #endif
 
 // ─── EPD display objects ────────────────────────────────────────────────────
 // Two driver stacks are always available; the active one is chosen at runtime
 // by probing BUSY polarity after a hardware reset.
-//   BUSY=HIGH → SSD1683 (GDEY042Z98, default)
-//   BUSY=LOW  → UC8179  (alternative panel)
+//   BUSY=LOW  → SSD1683 (GDEY042Z98, default)
+//   BUSY=HIGH → UC8179  (alternative panel)
 
 static GxEPD2_420c_GDEY042Z98 _ssd1683_drv(
     PIN_EPD_CS, PIN_EPD_DC, PIN_EPD_RST, PIN_EPD_BUSY);
@@ -38,7 +42,6 @@ static GxEPD2_3C<GxEPD2_420c_NM_UC8179,
 
 static bool _is_uc8179 = false;   // set in Board::init()
 static Adafruit_GFX *_active_gfx = &_ssd1683_disp;  // default
-static const char *kEpdTag = "EPDDetect";
 
 // ─── Chip detection (BUSY polarity after hardware reset) ──────────────────
 static bool detectIsUC8179()
@@ -52,24 +55,34 @@ static bool detectIsUC8179()
     digitalWrite(PIN_EPD_RST, HIGH);
     delay(5);
     digitalWrite(PIN_EPD_RST, LOW);
-    delay(2);
+    delay(10);
     digitalWrite(PIN_EPD_RST, HIGH);
 
     pinMode(PIN_EPD_BUSY, INPUT_PULLUP);
 
-    // Sample immediately after reset release.
-    // UC8179 is accepted only on a strong/consistent LOW pattern.
-    // Any ambiguous pattern defaults to SSD1683 to preserve compatibility.
+    // Observe BUSY for a wider window after reset release.
+    // The 4.2" UC8179 variant may assert BUSY slightly later than SSD1683,
+    // so a very short sampling window can miss its LOW phase and misclassify it.
     uint8_t lowCount = 0;
     uint8_t highCount = 0;
-    for (uint8_t i = 0; i < 20; ++i) {
-        if (digitalRead(PIN_EPD_BUSY) == LOW) lowCount++;
+    int16_t firstLowAt = -1;
+    for (uint8_t i = 0; i < 80; ++i) {
+        if (digitalRead(PIN_EPD_BUSY) == LOW)
+        {
+            lowCount++;
+            if (firstLowAt < 0) firstLowAt = i;
+        }
         else highCount++;
-        delayMicroseconds(500);
+        delay(1);
     }
 
-    // Require very high confidence to switch to UC8179.
-    return (lowCount >= 18 && highCount <= 2);
+    // On the tested 4.2" variants, SSD1683 drives BUSY LOW after reset,
+    // while UC8179 stays mostly HIGH in the same observation window.
+    bool is_uc8179 = (lowCount < 12);
+    Serial.printf("[EPDDetect] BUSY low=%u high=%u firstLow=%d => %s\n",
+                  lowCount, highCount, firstLowAt, is_uc8179 ? "UC8179" : "SSD1683");
+    Serial.flush();
+    return is_uc8179;
 }
 
 // ─── EpdDriver adapter ────────────────────────────────────────────────────
@@ -129,15 +142,18 @@ public:
         _is_uc8179  = detectIsUC8179();
         _active_gfx = _is_uc8179 ? static_cast<Adafruit_GFX *>(&_uc8179_disp)
                      : static_cast<Adafruit_GFX *>(&_ssd1683_disp);
-        ESP_LOGI(kEpdTag, "driver mode=AUTO, select: %s", _is_uc8179 ? "UC8179" : "SSD1683");
+        Serial.printf("[EPDDetect] driver mode=AUTO, select=%s\n", _is_uc8179 ? "UC8179" : "SSD1683");
+        Serial.flush();
     #elif EPD_DRIVER_MODE == 1
         _is_uc8179  = true;
         _active_gfx = static_cast<Adafruit_GFX *>(&_uc8179_disp);
-        ESP_LOGI(kEpdTag, "driver mode=FORCE_UC8179");
+        Serial.println("[EPDDetect] driver mode=FORCE_UC8179");
+        Serial.flush();
     #else
         _is_uc8179  = false;
         _active_gfx = static_cast<Adafruit_GFX *>(&_ssd1683_disp);
-        ESP_LOGI(kEpdTag, "driver mode=FORCE_SSD1683");
+        Serial.println("[EPDDetect] driver mode=FORCE_SSD1683");
+        Serial.flush();
     #endif
 
         // rev2: hardware enable pins — keep all modules powered off until needed.
@@ -166,7 +182,13 @@ public:
     uint16_t      colorWhite() const override { return GxEPD_WHITE; }
     uint16_t      colorAccent()    const override { return GxEPD_RED; }
     bool          hasAccentColor() const override { return true; }
-    ISensor      *getTempSensor()   override { return &_sensor; }
+    ISensor      *getTempSensor()   override {
+    #if NM420_ENABLE_TEMP_SENSOR
+        return &_sensor;
+    #else
+        return nullptr;
+    #endif
+    }
 
     uint32_t readBatteryMv() override {
         // rev2: gated resistor-divider network; enable ADC circuit, sample, then disable.
