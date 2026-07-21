@@ -1,0 +1,96 @@
+#include "render_news.h"
+
+#include <algorithm>
+#include <array>
+
+#include "ui/components/calm_grid.h"
+
+namespace {
+constexpr int16_t kNewsMargin = 8;
+
+void drawNewsHeader(IDrawSurface &surface, const std::string &title, const std::string &rightText) {
+    calm_grid::drawPageHeader(surface, title, rightText, "", 74);
+}
+
+void drawNewsFooter(IDrawSurface &surface, const std::string &leftText, const std::string &rightText) {
+    surface.drawText(kNewsMargin, 286, leftText, kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(392, 286, rightText, kDashboardBlack, TextAlign::Right, 1);
+}
+
+void drawNewsHeadlineRow(IDrawSurface &surface, const Rect &rect, int index,
+                         const NewsItemCell &item) {
+    surface.drawLine(rect.x, static_cast<int16_t>(rect.y + rect.h - 1),
+                     static_cast<int16_t>(rect.x + rect.w), static_cast<int16_t>(rect.y + rect.h - 1),
+                     kDashboardBlack);
+    calm_grid::drawSectionMarker(surface, static_cast<int16_t>(rect.x + 4),
+                                 static_cast<int16_t>(rect.y + 9));
+    surface.drawText(static_cast<int16_t>(rect.x + 16), static_cast<int16_t>(rect.y + 14),
+                     std::to_string(index), kDashboardAccent, TextAlign::Left, 1);
+    surface.drawText(static_cast<int16_t>(rect.x + 24), static_cast<int16_t>(rect.y + 12),
+                     calm_grid::fitText(surface, item.title, static_cast<int16_t>(rect.w - 92), 1),
+                     kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(static_cast<int16_t>(rect.x + rect.w - 4), static_cast<int16_t>(rect.y + 12),
+                     calm_grid::fitText(surface, item.source, 48, 1),
+                     kDashboardBlack, TextAlign::Right, 1);
+    surface.drawText(static_cast<int16_t>(rect.x + rect.w - 4), static_cast<int16_t>(rect.y + 24),
+                     calm_grid::fitText(surface, item.detail, 48, 1),
+                     kDashboardBlack, TextAlign::Right, 1);
+}
+
+void drawNewsHistoryCard(IDrawSurface &surface, const Rect &rect, const NewsItemCell &item) {
+    surface.drawRect(rect.x, rect.y, rect.w, rect.h, kDashboardAccent);
+    calm_grid::drawSectionMarker(surface, static_cast<int16_t>(rect.x + 10),
+                                 static_cast<int16_t>(rect.y + 16));
+    surface.drawText(static_cast<int16_t>(rect.x + 28), static_cast<int16_t>(rect.y + 33),
+                     item.title, kDashboardAccent, TextAlign::Left, 2);
+    surface.drawText(static_cast<int16_t>(rect.x + 94), static_cast<int16_t>(rect.y + 16),
+                     "Today in History", kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(static_cast<int16_t>(rect.x + 94), static_cast<int16_t>(rect.y + 30),
+                     calm_grid::fitText(surface, item.detail, static_cast<int16_t>(rect.w - 104), 1),
+                     kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(static_cast<int16_t>(rect.x + 94), static_cast<int16_t>(rect.y + 42),
+                     calm_grid::fitText(surface, item.source, static_cast<int16_t>(rect.w - 104), 1),
+                     kDashboardBlack, TextAlign::Left, 1);
+}
+
+void renderNewsLayout(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
+                      const std::string &headerTitle) {
+    drawNewsHeader(surface, headerTitle, "RSS   8/12");
+    const std::array<Rect, 3> rows = {{
+        {18, 56, 364, 40},
+        {18, 96, 364, 40},
+        {18, 136, 364, 40},
+    }};
+    const size_t count = std::min<size_t>(rows.size(), snapshot.headlines.size());
+    for (size_t i = 0; i < count; ++i) {
+        drawNewsHeadlineRow(surface, rows[i], static_cast<int>(i + 1), snapshot.headlines[i]);
+    }
+    if (!snapshot.history.empty()) {
+        drawNewsHistoryCard(surface, Rect{18, 182, 364, 56}, snapshot.history.front());
+    }
+    drawNewsFooter(surface, "RSS - Wikimedia - No AI key", "Updated 08:30");
+}
+}  // namespace
+
+NewsPageSnapshot sampleNewsPageSnapshot() {
+    NewsPageSnapshot snapshot;
+    snapshot.title = "HEADLINES";
+    snapshot.subtitle = "RSS  8/12";
+    snapshot.headlines = {
+        {"Markets open higher after new inflation report", "Reuters", "12m", true},
+        {"City approves expanded regional transit plan", "Local", "28m", false},
+        {"Space mission completes successful lunar flyby", "Science", "41m", false},
+    };
+    snapshot.history = {
+        {"1969", "Today in History", "Apollo 11 astronauts walked on the Moon.", true},
+    };
+    return snapshot;
+}
+
+void renderHeadlinesPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot) {
+    renderNewsLayout(surface, snapshot, "HEADLINES");
+}
+
+void renderTodayInHistoryPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot) {
+    renderNewsLayout(surface, snapshot, "TODAY IN HISTORY");
+}

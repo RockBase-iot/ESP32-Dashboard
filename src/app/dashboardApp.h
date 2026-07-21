@@ -2,10 +2,14 @@
 
 #include <stdint.h>
 
+#include "app/input/button_controller.h"
+#include "app/page/page_catalog.h"
+
 // Forward declarations for private method parameters.
 class  IBoard;
 class  WifiManager;
 class  WeatherClass;
+class  PageManager;
 struct AppConfig;
 class  String;
 
@@ -27,6 +31,7 @@ private:
     static constexpr uint32_t kLongPressMs     =  2000;            // long-press threshold
     static constexpr uint32_t kApTimeoutMs     = 10 * 60 * 1000;   // AP mode auto-exit
     static constexpr uint32_t kStayAwakeMs     =  5 * 60 * 1000;   // stay-awake web portal
+    static constexpr uint32_t kInteractiveIdleSec = 30;            // deep-sleep entry threshold
     static constexpr int      kMaxFetchRetries =  3;               // failures before error page
 
     // ── RTC-retained state (survives deep sleep) ───────────────────────────
@@ -34,6 +39,7 @@ private:
     static bool    _coldBoot;   // true only on first power-on
     static bool    _stayAwake;  // short press: 5-min web portal
     static bool    _apMode;     // long press:  AP config mode
+    static ButtonAction _lastButtonAction;
 
     // ── Phase helpers (called in order from run()) ─────────────────────────
 
@@ -62,10 +68,23 @@ private:
     static void _renderWeather(IBoard &board, WeatherClass &weather,
                                const AppConfig &cfg, const String &localIP);
 
+    // 2b-iv-b. Render a configured dashboard page.
+    static void _renderDashboardPage(IBoard &board, PageManager &pageManager, PageId page,
+                                     int64_t nowUtc, WeatherClass &weather,
+                                     const AppConfig &cfg, const String &localIP);
+
     // 2b-v. Run web portal: stay-awake (short press) or debug halt.
     static void _runWebPortal(WifiManager &wifi, const AppConfig &cfg);
 
+    // 2b-vi. Keep buttons active before sleep; BOOT=next, USER=previous.
+    static PageId _runInteractiveWindow(IBoard &board, PageManager &pageManager,
+                                        WeatherClass &weather, const AppConfig &cfg,
+                                        const String &localIP);
+
     // Utility: draw a full-screen error message on the EPD.
     static void _showErrorPage(IBoard &board, const char *title, const char *msg);
+
+    // Utility: persist current page, shut radios/peripherals down, then enter deep sleep.
+    static void _enterScheduledSleep(IBoard &board, uint64_t deepSleepUs, PageId currentPage);
 };
 

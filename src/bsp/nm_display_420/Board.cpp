@@ -8,6 +8,9 @@
 
 #include "bsp/IBoard.h"
 #include "config.h"
+#include "utils/logger.h"
+
+static const char *TAG = "EPD420";
 
 // ─── EPD display object ─────────────────────────────────────────────────────
 // 4.2" Red/Black/White EPD (GxEPD2_420c_GDEY042Z98), 400×300 px.
@@ -41,6 +44,7 @@ public:
 
         // Release GPIO hold that may have been set before the previous deep sleep,
         // then (re-)initialise each pin to its idle/off state.
+        gpio_deep_sleep_hold_dis();
         // Peripheral enable / control pins.
         gpio_hold_dis((gpio_num_t)PIN_PA_CTRL);
         gpio_hold_dis((gpio_num_t)PIN_LORA_EN);
@@ -102,7 +106,7 @@ public:
         return static_cast<uint32_t>(raw * 3300UL * BATT_ADC_DIV / 4095);
     }
 
-    void deepSleep(uint64_t microseconds) override {
+    void prepareForSleep() override {
         // ── Drive all power-enable pins LOW (modules off) ─────────────────────
         pinMode(PIN_LORA_EN,   OUTPUT); digitalWrite(PIN_LORA_EN,   LOW); // IO47 — LoRa power on (held LOW)
         pinMode(PIN_CODEC_EN,  OUTPUT); digitalWrite(PIN_CODEC_EN,  LOW);  // IO44 — ES8311 off
@@ -151,6 +155,12 @@ public:
         for (uint8_t p : kHiZ) {
             pinMode(p, INPUT); // INPUT = floating, no pull-up/pull-down
         }
+    }
+
+    void deepSleep(uint64_t microseconds) override {
+        prepareForSleep();
+        pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
+        pinMode(PIN_AP_BTN, INPUT_PULLUP);
         // ── Latch driven output pins across deep sleep ────────────────────────
         // Latched LOW:
         gpio_hold_en((gpio_num_t)PIN_LORA_EN);
@@ -170,9 +180,19 @@ public:
         // rtc_gpio_hold_en((gpio_num_t)PIN_LORA_MOSI);
         // rtc_gpio_hold_en((gpio_num_t)PIN_LORA_MISO);
         gpio_deep_sleep_hold_en(); // ESP32-S3: retain latches when IO domain powers off
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+        const esp_err_t timerErr = microseconds > 0
+            ? esp_sleep_enable_timer_wakeup(microseconds)
+            : ESP_OK;
+        const esp_err_t bootErr = esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+        log_i(TAG,
+              "Deep sleep setup: timer=%llu timerErr=%d bootWake=GPIO%u err=%d userWake=unsupported GPIO%u is not RTC IO",
+              static_cast<unsigned long long>(microseconds),
+              static_cast<int>(timerErr),
+              static_cast<unsigned>(PIN_BOOT_BTN),
+              static_cast<int>(bootErr),
+              static_cast<unsigned>(PIN_AP_BTN));
         Serial.flush(); // drain USB CDC TX buffer before digital core powers off
-        esp_sleep_enable_timer_wakeup(microseconds);
-        esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0); // Boot button (IO0) wakes deep sleep
         esp_deep_sleep_start();
     }
 

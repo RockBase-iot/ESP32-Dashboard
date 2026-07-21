@@ -1,15 +1,32 @@
 #include "dashboardApp.h"
 #include "bsp/IBoard.h"
+#include "app/input/button_controller.h"
+#include "app/page/page_manager.h"
+#include "app/page/page_state_store.h"
+#include "app/render/render_coordinator.h"
 #include "ui/ui_layout.h"
+#if defined(UI_LAYOUT_EPD_400x300)
+#include "ui/canvas/gfx_surface.h"
+#include "ui/layouts/epd_400x300/render_agenda.h"
+#include "ui/layouts/epd_400x300/render_calendar.h"
+#include "ui/layouts/epd_400x300/render_finance.h"
+#include "ui/layouts/epd_400x300/render_news.h"
+#include "ui/layouts/epd_400x300/render_overview.h"
+#include "ui/layouts/epd_400x300/render_time.h"
+#include "ui/layouts/epd_400x300/render_weather.h"
+#endif
 #include "app/config/app_config.h"
+#include "app/memory/capacity_profile.h"
 #include "app/weather/weather.h"
 #include "app/wifi/wifi_manager.h"
 #include "app/web/web_server.h"
 #include "app/locale/locale_mgr.h"
 #include "utils/logger.h"
 #include <WiFi.h>
+#include <esp_attr.h>
 #include <esp_sleep.h>
 #include <esp_mac.h>
+#include <time.h>
 
 static const char *TAG = "DashboardApp";
 
@@ -18,6 +35,88 @@ RTC_DATA_ATTR uint8_t DashboardApp::_failCount = 0;
 RTC_DATA_ATTR bool    DashboardApp::_coldBoot  = true;
 RTC_DATA_ATTR bool    DashboardApp::_stayAwake = false;
 RTC_DATA_ATTR bool    DashboardApp::_apMode    = false;
+RTC_DATA_ATTR ButtonAction DashboardApp::_lastButtonAction = ButtonAction::None;
+
+namespace {
+const char *buttonActionName(ButtonAction action) {
+    switch (action) {
+    case ButtonAction::NextPage: return "NextPage";
+    case ButtonAction::PreviousPage: return "PreviousPage";
+    case ButtonAction::SyncCurrent: return "SyncCurrent";
+    case ButtonAction::OpenConfig: return "OpenConfig";
+    case ButtonAction::RecoveryAp: return "RecoveryAp";
+    case ButtonAction::None:
+    default:
+        return "None";
+    }
+}
+
+uint32_t fnv1aAdd(uint32_t hash, uint32_t value) {
+    for (uint8_t i = 0; i < 4; ++i) {
+        hash ^= static_cast<uint8_t>((value >> (i * 8)) & 0xFF);
+        hash *= 16777619UL;
+    }
+    return hash;
+}
+
+uint32_t fnv1aAddString(uint32_t hash, const String &value) {
+    for (size_t i = 0; i < value.length(); ++i) {
+        hash ^= static_cast<uint8_t>(value[i]);
+        hash *= 16777619UL;
+    }
+    return hash;
+}
+
+uint32_t scaledFloatHash(float value, float scale) {
+    if (isnan(value)) {
+        return 0xFFFFFFFFUL;
+    }
+    return static_cast<uint32_t>(static_cast<int32_t>(value * scale));
+}
+
+uint32_t dashboardContentHash(PageId page, const WeatherClass &weather, const String &localIP) {
+    uint32_t hash = 2166136261UL;
+    hash = fnv1aAdd(hash, static_cast<uint32_t>(page));
+    if (page == PageId::WeatherToday) {
+        const WeatherData &data = weather.weather();
+        const AirQualityData &aqi = weather.airQuality();
+        hash = fnv1aAdd(hash, data.valid ? 1 : 0);
+        hash = fnv1aAdd(hash, scaledFloatHash(data.current.temperature, 10.0f));
+        hash = fnv1aAdd(hash, scaledFloatHash(data.current.apparent_temperature, 10.0f));
+        hash = fnv1aAdd(hash, scaledFloatHash(data.current.humidity, 1.0f));
+        hash = fnv1aAdd(hash, static_cast<uint32_t>(data.current.weather_code));
+        hash = fnv1aAdd(hash, aqi.valid ? 1 : 0);
+        hash = fnv1aAdd(hash, static_cast<uint32_t>(aqi.us_aqi));
+        hash = fnv1aAddString(hash, localIP);
+    }
+    return hash == 0 ? 1 : hash;
+}
+
+PageSettings pageSettingsFromConfig(const AppConfig &cfg) {
+    PageSettings settings = defaultPageSettings();
+    settings.configVersion = cfg.configVersion;
+    settings.enabledMask = cfg.pageEnabledMask;
+    settings.autoRotateMask = cfg.pageAutoRotateMask;
+    settings.orderCount = cfg.pageOrderCount;
+    for (size_t i = 0; i < settings.orderCount && i < settings.order.size(); ++i) {
+        settings.order[i] = static_cast<PageId>(cfg.pageOrder[i]);
+    }
+    settings.templateId = static_cast<PageTemplateId>(cfg.pageTemplateId);
+    settings.rotationIntervalMinutes = cfg.rotationIntervalMinutes;
+    settings.timeZoneId = cfg.timeZoneId.c_str();
+    return sanitizePageSettings(settings);
+}
+
+bool isPressedPin(uint8_t pin) {
+    return pin != 0xFF && digitalRead(pin) == LOW;
+}
+
+void configureButtonInput(uint8_t pin) {
+    if (pin != 0xFF) {
+        pinMode(pin, INPUT_PULLUP);
+    }
+}
+}  // namespace
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Phase 0 — Wakeup detection
@@ -28,19 +127,29 @@ RTC_DATA_ATTR bool    DashboardApp::_apMode    = false;
 void DashboardApp::_detectWakeup() {
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
     bool isTimerWake  = (cause == ESP_SLEEP_WAKEUP_TIMER);
-    bool isButtonWake = (cause == ESP_SLEEP_WAKEUP_EXT0);
+    bool isBootWake = (cause == ESP_SLEEP_WAKEUP_EXT0);
 
-    if (isButtonWake) {
+    _lastButtonAction = ButtonAction::None;
+    if (isBootWake) {
         uint8_t pin = getBoard().bootButtonPin();
-        pinMode(pin, INPUT); // external pull-up; no internal pull needed
+        configureButtonInput(pin);
         unsigned long start = millis();
-        bool longPress = false;
-        while (digitalRead(pin) == LOW) {
-            if (millis() - start >= kLongPressMs) { longPress = true; break; }
+        while (digitalRead(pin) == LOW && millis() - start < 6500UL) {
             delay(10);
         }
-        if (longPress) _apMode    = true;
-        else           _stayAwake = true;
+        const uint32_t heldMs = static_cast<uint32_t>(millis() - start);
+        if (digitalRead(pin) == LOW || heldMs >= 6000UL) {
+            _lastButtonAction = ButtonAction::RecoveryAp;
+        } else if (heldMs >= kLongPressMs) {
+            _lastButtonAction = ButtonAction::OpenConfig;
+        } else {
+            _lastButtonAction = ButtonAction::None;
+        }
+
+        if (_lastButtonAction == ButtonAction::OpenConfig ||
+            _lastButtonAction == ButtonAction::RecoveryAp) {
+            _apMode = true;
+        }
     }
 
     if (!isTimerWake) {
@@ -198,6 +307,84 @@ void DashboardApp::_renderWeather(IBoard &board, WeatherClass &weather,
     log_i(TAG, "Render complete");
 }
 
+void DashboardApp::_renderDashboardPage(IBoard &board, PageManager &pageManager, PageId page,
+                                        int64_t nowUtc, WeatherClass &weather,
+                                        const AppConfig &cfg, const String &localIP) {
+    const PageDescriptor *descriptor = findPage(page);
+    log_i(TAG, "Rendering dashboard page: %s (%u)",
+          descriptor ? descriptor->name : "Unknown", static_cast<unsigned>(page));
+    if (page == PageId::WeatherToday) {
+        _renderWeather(board, weather, cfg, localIP);
+        return;
+    }
+
+#if defined(UI_LAYOUT_EPD_400x300)
+    GfxSurface surface(board.gfx());
+    board.epd().firstPage();
+    do {
+        switch (page) {
+            case PageId::Overview:
+                renderOverviewPage(surface, sampleCalendarPageSnapshot());
+                break;
+            case PageId::TodayAgenda:
+                renderTodayAgendaPage(surface, sampleCalendarPageSnapshot());
+                break;
+            case PageId::WeeklyTimeline:
+                renderWeeklyTimelinePage(surface, sampleCalendarPageSnapshot());
+                break;
+            case PageId::MonthlyOverview:
+                renderMonthlyOverviewPage(surface, sampleCalendarPageSnapshot());
+                break;
+            case PageId::LocalNotes:
+                renderLocalNotesPage(surface, sampleCalendarPageSnapshot());
+                break;
+            case PageId::WeeklyWeather:
+                renderWeeklyWeatherPage(surface, sampleWeatherPageSnapshot());
+                break;
+            case PageId::IndoorClimate:
+                renderIndoorClimatePage(surface, sampleWeatherPageSnapshot());
+                break;
+            case PageId::WorldClock:
+                renderWorldClockPage(surface,
+                                      worldClockPageSnapshotAt(nowUtc, cfg.timeZoneId.c_str(),
+                                                               pageManager.pageNumber(page),
+                                                               pageManager.pageCount()));
+                break;
+            case PageId::FocusClock:
+                renderFocusClockPage(surface,
+                                     worldClockPageSnapshotAt(nowUtc, cfg.timeZoneId.c_str(),
+                                                              pageManager.pageNumber(page),
+                                                              pageManager.pageCount()));
+                break;
+            case PageId::StockInfo:
+                renderStockInfoPage(surface, sampleFinancePageSnapshot());
+                break;
+            case PageId::PortfolioSummary:
+                renderPortfolioSummaryPage(surface, sampleFinancePageSnapshot());
+                break;
+            case PageId::EconomicCalendar:
+                renderEconomicCalendarPage(surface, sampleFinancePageSnapshot());
+                break;
+            case PageId::Headlines:
+                renderHeadlinesPage(surface, sampleNewsPageSnapshot());
+                break;
+            case PageId::TodayInHistory:
+                renderTodayInHistoryPage(surface, sampleNewsPageSnapshot());
+                break;
+            case PageId::ImportantMilestones:
+                renderImportantMilestonesPage(surface, sampleCalendarPageSnapshot());
+                break;
+            case PageId::WeatherToday:
+            default:
+                break;
+        }
+    } while (board.epd().nextPage());
+    log_i(TAG, "Render complete");
+#else
+    _renderWeather(board, weather, cfg, localIP);
+#endif
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Phase 2b-v — Web portal
 // ═════════════════════════════════════════════════════════════════════════════
@@ -235,6 +422,72 @@ void DashboardApp::_showErrorPage(IBoard &board, const char *title, const char *
     do { errorPage.draw(); } while (board.epd().nextPage());
 }
 
+PageId DashboardApp::_runInteractiveWindow(IBoard &board, PageManager &pageManager,
+                                           WeatherClass &weather, const AppConfig &cfg,
+                                           const String &localIP) {
+    const uint8_t bootPin = board.bootButtonPin();
+    const uint8_t userPin = board.apButtonPin();
+    configureButtonInput(bootPin);
+    configureButtonInput(userPin);
+
+    const uint32_t releaseStart = millis();
+    while ((isPressedPin(bootPin) || isPressedPin(userPin)) &&
+           millis() - releaseStart < 3000UL) {
+        delay(20);
+    }
+
+    ButtonController buttons;
+    uint32_t lastActivityMs = millis();
+    while (millis() - lastActivityMs < kInteractiveIdleSec * 1000UL) {
+        const uint32_t nowMs = millis();
+        ButtonAction action = ButtonAction::None;
+
+        if (bootPin != 0xFF) {
+            action = buttons.update(ButtonId::Boot, isPressedPin(bootPin), nowMs);
+        }
+        if (action == ButtonAction::None && userPin != 0xFF) {
+            action = buttons.update(ButtonId::User, isPressedPin(userPin), nowMs);
+        }
+
+        if (action != ButtonAction::None) {
+            _lastButtonAction = action;
+            lastActivityMs = millis();
+            log_i(TAG, "Interactive button action: %s", buttonActionName(action));
+
+            if (action == ButtonAction::OpenConfig || action == ButtonAction::RecoveryAp) {
+                _apMode = true;
+                _enterApMode(board);
+                return pageManager.current();
+            }
+
+            const PageId selectedPage = applyButtonPageAction(pageManager, action);
+            if (action == ButtonAction::NextPage || action == ButtonAction::PreviousPage) {
+                _renderDashboardPage(board, pageManager, selectedPage,
+                                     static_cast<int64_t>(time(nullptr)),
+                                     weather, cfg, localIP);
+                const uint32_t contentHash = dashboardContentHash(selectedPage, weather, localIP);
+                gDashboardRtcPageState = pageManager.snapshotRtcState(static_cast<int64_t>(time(nullptr)),
+                                                                     contentHash);
+            }
+        }
+        delay(20);
+    }
+
+    return pageManager.current();
+}
+
+void DashboardApp::_enterScheduledSleep(IBoard &board, uint64_t deepSleepUs, PageId currentPage) {
+    const bool stored = savePersistedCurrentPage(currentPage);
+    log_i(TAG, "Entering deep sleep: deepTimer=%llu us currentPage=%u stored=%d",
+          static_cast<unsigned long long>(deepSleepUs),
+          static_cast<unsigned>(currentPage),
+          stored);
+    board.epd().hibernate();
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    board.deepSleep(deepSleepUs);
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Entry point
 // ═════════════════════════════════════════════════════════════════════════════
@@ -247,16 +500,36 @@ void DashboardApp::run() {
 
     log_i(TAG, "=== ESP32-Dashboard starting (cause=%d, cold=%d, fails=%d) ===",
           (int)esp_sleep_get_wakeup_cause(), _coldBoot, _failCount);
+    const bool hasPsram = psramFound();
+    const size_t psramBytes = ESP.getPsramSize();
+    const CapacityProfile capacity = detectCapacity(hasPsram, psramBytes);
+    log_i(TAG,
+          "Memory: psram=%s size=%u freePsram=%u heap=%u maxAlloc=%u profile=%s slots=%u events=%u sourceMax=%u",
+          hasPsram ? "yes" : "no",
+          static_cast<unsigned>(psramBytes),
+          static_cast<unsigned>(ESP.getFreePsram()),
+          static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()),
+          capacity.extended ? "Extended" : "Safe",
+          capacity.calendarSlots,
+          capacity.maxExpandedEvents,
+          static_cast<unsigned>(capacity.maxSourceBytes));
 
     AppConfig cfg;
     loadAppConfig(cfg);
     log_i(TAG, "Config: ssid=%s  lat=%s  lon=%s  utcOffset=%+d  lang=%s  sleep=%dmin",
           cfg.wifiSsid.c_str(), cfg.lat.c_str(), cfg.lon.c_str(),
           cfg.utcOffset, cfg.language.c_str(), cfg.sleepDuration);
+    const PageSettings settings = pageSettingsFromConfig(cfg);
+    PageManager pageManager(settings);
+    const PageId persistedPage = loadPersistedCurrentPage(settings);
+    const PageId restoredPage = pageManager.restoreStoredPage(persistedPage);
+    log_i(TAG, "Restored page from NVS: %u", static_cast<unsigned>(restoredPage));
 
     _initHardware(board, _coldBoot);
 
     if (_apMode)   { _enterApMode(board); /* never returns */ }
+    const bool forceInitialRender = _coldBoot;
     if (_coldBoot) {
         char splashBuf[64];
         if (_stayAwake) {
@@ -285,15 +558,45 @@ void DashboardApp::run() {
 
     if (!dataOk) {
         log_i(TAG, "Sleeping for %d minutes", cfg.sleepDuration);
-        board.epd().hibernate();
-        board.deepSleep(static_cast<uint64_t>(cfg.sleepDuration) * 60ULL * 1000000ULL);
+        _enterScheduledSleep(board,
+                             static_cast<uint64_t>(cfg.sleepDuration) * 60ULL * 1000000ULL,
+                             pageManager.current());
         return;
     }
 
-    _renderWeather(board, weather, cfg, localIP);
+    const RtcPageState previousRtcPageState = gDashboardRtcPageState;
+    const PageId previousPage = previousRtcPageState.currentPage;
+    const PageId selectedPage = pageManager.current();
+    const uint32_t contentHash = dashboardContentHash(selectedPage, weather, localIP);
+    const int64_t nowUtc = static_cast<int64_t>(time(nullptr));
+    RenderInputs renderInput;
+    renderInput.requestedPage = selectedPage;
+    renderInput.currentPage = previousPage;
+    renderInput.contentHash = contentHash;
+    renderInput.lastContentHash = previousRtcPageState.lastContentHash;
+    renderInput.nowUtc = nowUtc;
+    renderInput.lastFullRefreshUtc = previousRtcPageState.lastFullRefreshUtc;
+    renderInput.forceRefresh = forceInitialRender || _lastButtonAction != ButtonAction::None;
+
+    RenderCoordinator renderCoordinator;
+    const RenderDecision renderDecision = renderCoordinator.decide(renderInput);
+    if (renderDecision.shouldRender) {
+        _renderDashboardPage(board, pageManager, selectedPage, nowUtc, weather, cfg, localIP);
+        gDashboardRtcPageState = pageManager.snapshotRtcState(nowUtc, contentHash);
+    } else {
+        log_i(TAG, "Render skipped: page=%u deferred=%d hash=0x%08lx lastHash=0x%08lx",
+              static_cast<unsigned>(selectedPage),
+              renderDecision.deferred,
+              static_cast<unsigned long>(contentHash),
+              static_cast<unsigned long>(previousRtcPageState.lastContentHash));
+        gDashboardRtcPageState = pageManager.snapshotRtcState(previousRtcPageState.lastFullRefreshUtc,
+                                                             previousRtcPageState.lastContentHash);
+    }
     _runWebPortal(wifi, cfg);
+    const PageId finalPage = _runInteractiveWindow(board, pageManager, weather, cfg, localIP);
     log_i(TAG, "Sleeping for %d minutes", cfg.sleepDuration);
-    board.epd().hibernate();
-    board.deepSleep(static_cast<uint64_t>(cfg.sleepDuration) * 60ULL * 1000000ULL);
+    _enterScheduledSleep(board,
+                         static_cast<uint64_t>(cfg.sleepDuration) * 60ULL * 1000000ULL,
+                         finalPage);
 }
 

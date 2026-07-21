@@ -1,0 +1,48 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  platformio:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Native tests
+        run: pio test -e native
+
+      - name: Firmware build
+        run: |
+          set -o pipefail
+          pio run -e nm-display-420 | tee firmware-build.log
+          {
+            echo "## Firmware build"
+            echo
+            echo '```text'
+            grep -E "RAM:|Flash:|Building in" firmware-build.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: LittleFS build
+        run: |
+          set -o pipefail
+          pio run -e nm-display-420 -t buildfs | tee littlefs-build.log
+          {
+            echo "## LittleFS build"
+            echo
+            echo '```text'
+            grep -E "Building FS image|LittleFS|Filesystem" littlefs-build.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

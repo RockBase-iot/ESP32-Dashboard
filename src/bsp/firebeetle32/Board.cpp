@@ -73,7 +73,13 @@ public:
         return static_cast<uint32_t>(raw * 3300UL * 2 / 4095);
     }
 
+    void prepareForSleep() override {
+        pinMode(PIN_EPD_PWR, OUTPUT);
+        digitalWrite(PIN_EPD_PWR, LOW);
+    }
+
     void deepSleep(uint64_t microseconds) override {
+        prepareForSleep();
         esp_sleep_enable_timer_wakeup(microseconds);
         esp_deep_sleep_start();
     }

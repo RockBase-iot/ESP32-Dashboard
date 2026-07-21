@@ -1,6 +1,10 @@
 #pragma once
 
 #include <Arduino.h>
+#include <stddef.h>
+#include <stdint.h>
+
+static constexpr size_t APP_CONFIG_PAGE_ORDER_MAX = 16;
 
 // AppConfig — flat struct holding all runtime configuration.
 //
@@ -34,6 +38,16 @@ struct AppConfig {
 
     // Locale
     String language;     // "en_US" / "zh_CN" / ...
+
+    // Dashboard pages
+    uint32_t configVersion;
+    uint32_t pageEnabledMask;
+    uint32_t pageAutoRotateMask;
+    uint8_t  pageOrder[APP_CONFIG_PAGE_ORDER_MAX];
+    size_t   pageOrderCount;
+    uint8_t  pageTemplateId;
+    uint16_t rotationIntervalMinutes; // 0 disables automatic rotation.
+    String   timeZoneId;              // IANA/POSIX-style zone ID.
 };
 
 // Load config from NVS into cfg. Missing keys use the defaults in nvs_table.h.

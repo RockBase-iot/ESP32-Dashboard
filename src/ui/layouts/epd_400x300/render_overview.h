@@ -1,0 +1,37 @@
+#pragma once
+
+#include <array>
+#include <string>
+#include <vector>
+
+#include "ui/canvas/draw_surface.h"
+
+struct CalendarDayCell {
+    std::string text;
+    std::string detail;
+    bool muted = false;
+    bool today = false;
+    bool accent = false;
+};
+
+struct CalendarEventLine {
+    std::string time;
+    std::string title;
+    std::string detail;
+    bool accent = false;
+    int dayIndex = -1;
+};
+
+struct CalendarPageSnapshot {
+    std::string title;
+    std::string subtitle;
+    std::vector<CalendarEventLine> overviewItems;
+    std::vector<CalendarEventLine> timelineItems;
+    std::vector<CalendarDayCell> monthCells;
+    std::vector<std::string> agendaItems;
+    std::vector<std::string> notes;
+    std::vector<std::string> milestones;
+};
+
+CalendarPageSnapshot sampleCalendarPageSnapshot();
+void renderOverviewPage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot);

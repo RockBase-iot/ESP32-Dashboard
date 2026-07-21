@@ -13,6 +13,11 @@ static const char *TAG_WS = "WebServer";
 
 static AsyncWebServer _ws(80);
 static bool _ws_started = false;
+static constexpr size_t kMaxConfigPatchBytes = 4096;
+
+static bool isSensitiveConfigKey(const String &key) {
+    return key == NVS_KEY_WIFI_PASSWORD;
+}
 
 // ── Serialise AppConfig → JSON ───────────────────────────────────────────────
 static String configToJson(const AppConfig &cfg) {
@@ -94,17 +99,25 @@ static bool applyPatch(const String &body) {
     saveAppConfig(cfg);
     log_w(TAG_WS, "Config patched and saved to NVS:");
     for (JsonPair kv : doc.as<JsonObject>()) {
-        log_w(TAG_WS, "  %s = %s", kv.key().c_str(), kv.value().as<String>().c_str());
+        const String key = kv.key().c_str();
+        log_w(TAG_WS, "  %s = %s", key.c_str(), isSensitiveConfigKey(key) ? "<redacted>" : "<updated>");
     }
     return true;
 }
 
 // ── Body collector: shared onBody handler for POST routes ──────────────────
 static void collectBody(AsyncWebServerRequest *req, uint8_t *data, size_t len,
-                        size_t index, size_t /*total*/) {
-    if (index == 0) req->_tempObject = new String();
-    reinterpret_cast<String *>(req->_tempObject)->concat(
-        reinterpret_cast<const char *>(data), len);
+                        size_t index, size_t total) {
+    if (index == 0) {
+        if (total > kMaxConfigPatchBytes) {
+            return;
+        }
+        req->_tempObject = new String();
+    }
+    String *body = reinterpret_cast<String *>(req->_tempObject);
+    if (body) {
+        body->concat(reinterpret_cast<const char *>(data), len);
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -147,7 +160,15 @@ void WebServer::start() {
     _ws.on("/api/config", HTTP_POST,
         [](AsyncWebServerRequest *req) {
             String *body = reinterpret_cast<String *>(req->_tempObject);
+            if (req->contentLength() > kMaxConfigPatchBytes) {
+                delete body;
+                req->_tempObject = nullptr;
+                req->send(413, "application/json", "{\"error\":\"body too large\"}");
+                return;
+            }
             if (!body || body->isEmpty()) {
+                delete body;
+                req->_tempObject = nullptr;
                 req->send(400, "application/json", "{\"error\":\"empty body\"}");
                 return;
             }

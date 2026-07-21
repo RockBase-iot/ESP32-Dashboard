@@ -1,9 +1,6 @@
 #include "settings.h"
 
 #include <nvs.h>
-#include "utils/logger.h"
-
-static const char *TAG = "Settings";
 
 Settings::Settings(const String &ns, bool read_write) : _read_write(read_write) {
     nvs_flash_init();

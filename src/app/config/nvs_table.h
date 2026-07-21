@@ -21,6 +21,14 @@
 #define NVS_KEY_TIME_FORMAT      "TimeFmt"
 #define NVS_KEY_DATE_FORMAT      "DateFmt"
 #define NVS_KEY_LANGUAGE         "Language"     // "en_US" / "zh_CN" / ...
+#define NVS_KEY_CONFIG_VERSION   "CfgVer"
+#define NVS_KEY_PAGE_ENABLED     "PageEn"
+#define NVS_KEY_PAGE_ORDER       "PageOrd"
+#define NVS_KEY_PAGE_AUTO        "PageAuto"
+#define NVS_KEY_PAGE_TEMPLATE    "PageTpl"
+#define NVS_KEY_ROTATE_MINUTES   "RotMin"
+#define NVS_KEY_TIME_ZONE_ID     "TzId"
+#define NVS_KEY_CURRENT_PAGE     "CurPage"
 
 // ─── Default values (used when NVS key is absent) ─────────────────────────
 // Open-Meteo is fully free and requires no API key.
@@ -41,3 +49,6 @@
 #define DEFAULT_TIME_FORMAT      "%H:%M"
 #define DEFAULT_DATE_FORMAT      "%a, %B %e"
 #define DEFAULT_LANGUAGE         "zh_CN"
+#define DEFAULT_CONFIG_VERSION   2
+#define DEFAULT_PAGE_TEMPLATE    0
+#define DEFAULT_ROTATE_MINUTES   0

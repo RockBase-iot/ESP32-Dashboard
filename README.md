@@ -104,7 +104,27 @@ pio run -e nm-display-420 -t upload
 
 The LittleFS filesystem image (web portal HTML) is built and uploaded automatically via `extra_script_fs.py`.
 
-### 4. First-time configuration (AP mode)
+### 4. Test & build gates
+
+Run the host-side pure C++ tests before firmware changes:
+
+```bash
+pio test -e native
+```
+
+Native tests require a host C/C++ compiler (`gcc` and `g++`) in PATH. The GitHub
+Actions workflow runs them on Linux; local Windows runs need a compatible GCC
+toolchain installed separately.
+
+The release build gates are:
+
+```bash
+pio test -e native
+pio run -e nm-display-420
+pio run -e nm-display-420 -t buildfs
+```
+
+### 5. First-time configuration (AP mode)
 
 1. Hold the **Boot button (IO0) for ≥ 2 seconds** on first power-on to enter **AP config mode**.
 2. The display shows the hotspot name (`esp_dashboard_XXXXXX`) and the URL `192.168.4.1`.
@@ -112,7 +132,7 @@ The LittleFS filesystem image (web portal HTML) is built and uploaded automatica
 4. Fill in WiFi credentials, latitude / longitude, city name, UTC offset, and preferred units; click **Save**.
 5. The device restarts, connects to your home WiFi, fetches weather, and refreshes the display.
 
-### 5. Subsequent access
+### 6. Subsequent access
 
 Short-press the Boot button to keep the web portal alive for 5 minutes. The device stays on your home network; its IP address is shown at the bottom-left of the display. Open `http://<device-ip>` from any browser on the same network.
 

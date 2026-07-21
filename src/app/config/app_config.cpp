@@ -1,9 +1,87 @@
 #include "app_config.h"
 #include "settings.h"
 #include "nvs_table.h"
+#include "app/page/page_manager.h"
+
+namespace {
+String encodePageOrder(const uint8_t *order, size_t count) {
+    String out;
+    for (size_t i = 0; i < count; ++i) {
+        if (i > 0) out += ",";
+        out += String(static_cast<int>(order[i]));
+    }
+    return out;
+}
+
+void copyDefaultPageOrder(AppConfig &cfg, const PageSettings &defaults) {
+    cfg.pageOrderCount = defaults.orderCount;
+    if (cfg.pageOrderCount > APP_CONFIG_PAGE_ORDER_MAX) {
+        cfg.pageOrderCount = APP_CONFIG_PAGE_ORDER_MAX;
+    }
+    for (size_t i = 0; i < cfg.pageOrderCount; ++i) {
+        cfg.pageOrder[i] = static_cast<uint8_t>(defaults.order[i]);
+    }
+}
+
+void copyPageSettingsToConfig(AppConfig &cfg, const PageSettings &settings) {
+    cfg.configVersion = settings.configVersion;
+    cfg.pageEnabledMask = settings.enabledMask;
+    cfg.pageAutoRotateMask = settings.autoRotateMask;
+    cfg.pageTemplateId = static_cast<uint8_t>(settings.templateId);
+    cfg.rotationIntervalMinutes = settings.rotationIntervalMinutes;
+    cfg.timeZoneId = String(settings.timeZoneId.c_str());
+    copyDefaultPageOrder(cfg, settings);
+}
+
+bool parseUint8Token(const String &token, uint8_t &out) {
+    if (token.length() == 0) {
+        return false;
+    }
+    int value = 0;
+    for (int i = 0; i < token.length(); ++i) {
+        const char c = token.charAt(i);
+        if (c < '0' || c > '9') {
+            return false;
+        }
+        value = value * 10 + (c - '0');
+        if (value >= static_cast<int>(APP_CONFIG_PAGE_ORDER_MAX)) {
+            return false;
+        }
+    }
+    out = static_cast<uint8_t>(value);
+    return true;
+}
+
+bool parsePageOrder(const String &csv, AppConfig &cfg) {
+    cfg.pageOrderCount = 0;
+    if (csv.length() == 0) {
+        return false;
+    }
+    bool seen[APP_CONFIG_PAGE_ORDER_MAX] = {};
+    int start = 0;
+    while (start <= csv.length()) {
+        if (cfg.pageOrderCount >= APP_CONFIG_PAGE_ORDER_MAX) {
+            return false;
+        }
+        int comma = csv.indexOf(',', start);
+        if (comma < 0) comma = csv.length();
+        const String token = csv.substring(start, comma);
+        uint8_t value = 0;
+        if (!parseUint8Token(token, value) || seen[value]) {
+            return false;
+        }
+        seen[value] = true;
+        cfg.pageOrder[cfg.pageOrderCount++] = value;
+        start = comma + 1;
+        if (comma == csv.length()) break;
+    }
+    return cfg.pageOrderCount > 0;
+}
+}  // namespace
 
 void loadAppConfig(AppConfig &cfg) {
     Settings s(NVS_NAMESPACE_WEATHER, /*read_write=*/false);
+    const PageSettings pageDefaults = defaultPageSettings();
 
     cfg.wifiSsid      = s.GetString(NVS_KEY_WIFI_SSID,       DEFAULT_WIFI_SSID);
     cfg.wifiPassword  = s.GetString(NVS_KEY_WIFI_PASSWORD,   DEFAULT_WIFI_PASSWORD);
@@ -22,6 +100,34 @@ void loadAppConfig(AppConfig &cfg) {
     cfg.unitsDist     = s.GetString(NVS_KEY_UNITS_DIST,      DEFAULT_UNITS_DIST);
     cfg.unitsPrecip   = s.GetString(NVS_KEY_UNITS_PRECIP,    DEFAULT_UNITS_PRECIP);
     cfg.language      = s.GetString(NVS_KEY_LANGUAGE,        DEFAULT_LANGUAGE);
+    cfg.configVersion = static_cast<uint32_t>(s.GetI32(NVS_KEY_CONFIG_VERSION, DEFAULT_CONFIG_VERSION));
+    cfg.pageEnabledMask = static_cast<uint32_t>(
+        s.GetI32(NVS_KEY_PAGE_ENABLED, static_cast<int32_t>(pageDefaults.enabledMask)));
+    cfg.pageAutoRotateMask = static_cast<uint32_t>(
+        s.GetI32(NVS_KEY_PAGE_AUTO, static_cast<int32_t>(pageDefaults.autoRotateMask)));
+    cfg.pageTemplateId = static_cast<uint8_t>(s.GetI32(NVS_KEY_PAGE_TEMPLATE, DEFAULT_PAGE_TEMPLATE));
+    cfg.rotationIntervalMinutes = static_cast<uint16_t>(
+        s.GetI32(NVS_KEY_ROTATE_MINUTES, DEFAULT_ROTATE_MINUTES));
+    cfg.timeZoneId = s.GetString(NVS_KEY_TIME_ZONE_ID, "");
+    if (cfg.timeZoneId.length() == 0) {
+        cfg.timeZoneId = String(timeZoneIdForUtcOffset(cfg.utcOffset).c_str());
+    }
+    if (!parsePageOrder(s.GetString(NVS_KEY_PAGE_ORDER, ""), cfg)) {
+        copyDefaultPageOrder(cfg, pageDefaults);
+    }
+
+    PageSettings rawPageSettings = pageDefaults;
+    rawPageSettings.configVersion = cfg.configVersion;
+    rawPageSettings.enabledMask = cfg.pageEnabledMask;
+    rawPageSettings.autoRotateMask = cfg.pageAutoRotateMask;
+    rawPageSettings.orderCount = cfg.pageOrderCount;
+    for (size_t i = 0; i < rawPageSettings.orderCount && i < rawPageSettings.order.size(); ++i) {
+        rawPageSettings.order[i] = static_cast<PageId>(cfg.pageOrder[i]);
+    }
+    rawPageSettings.templateId = static_cast<PageTemplateId>(cfg.pageTemplateId);
+    rawPageSettings.rotationIntervalMinutes = cfg.rotationIntervalMinutes;
+    rawPageSettings.timeZoneId = cfg.timeZoneId.c_str();
+    copyPageSettingsToConfig(cfg, sanitizePageSettings(rawPageSettings));
 }
 
 void saveAppConfig(const AppConfig &cfg) {
@@ -44,5 +150,12 @@ void saveAppConfig(const AppConfig &cfg) {
     s.SetString(NVS_KEY_UNITS_DIST,     cfg.unitsDist);
     s.SetString(NVS_KEY_UNITS_PRECIP,   cfg.unitsPrecip);
     s.SetString(NVS_KEY_LANGUAGE,       cfg.language);
+    s.SetI32   (NVS_KEY_CONFIG_VERSION, static_cast<int32_t>(cfg.configVersion));
+    s.SetI32   (NVS_KEY_PAGE_ENABLED,   static_cast<int32_t>(cfg.pageEnabledMask));
+    s.SetString(NVS_KEY_PAGE_ORDER,     encodePageOrder(cfg.pageOrder, cfg.pageOrderCount));
+    s.SetI32   (NVS_KEY_PAGE_AUTO,      static_cast<int32_t>(cfg.pageAutoRotateMask));
+    s.SetI32   (NVS_KEY_PAGE_TEMPLATE,  static_cast<int32_t>(cfg.pageTemplateId));
+    s.SetI32   (NVS_KEY_ROTATE_MINUTES, static_cast<int32_t>(cfg.rotationIntervalMinutes));
+    s.SetString(NVS_KEY_TIME_ZONE_ID,   cfg.timeZoneId);
     s.Commit();
 }
