@@ -5,6 +5,7 @@
 #include <esp_sleep.h>
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
+#include <soc/gpio_struct.h>
 
 #include "bsp/IBoard.h"
 #include "config.h"
@@ -37,6 +38,19 @@ public:
 };
 
 // ─── Board implementation ─────────────────────────────────────────────────
+// ─── Light-sleep wake ISR latch ─────────────────────────────────────────────
+// Level-triggered GPIO interrupts captured while the CPU is in light sleep;
+// OR-ed into the wake status after esp_light_sleep_start() returns so a fast
+// press/release is not lost when the hardware status register reads zero.
+static volatile uint64_t s_lightSleepIsrStatus = 0;
+
+static void IRAM_ATTR lightSleepWakeIsr(void *arg) {
+    const uint8_t pin = static_cast<uint8_t>(reinterpret_cast<uintptr_t>(arg));
+    if (pin < 64) {
+        s_lightSleepIsrStatus |= (1ULL << pin);
+    }
+}
+
 class Board final : public IBoard {
 public:
     void init() override {
@@ -194,6 +208,88 @@ public:
               static_cast<unsigned>(PIN_AP_BTN));
         Serial.flush(); // drain USB CDC TX buffer before digital core powers off
         esp_deep_sleep_start();
+    }
+
+    LightWake lightSleepMs(uint32_t maxMs) override {
+        // Buttons must stay readable both while running and during sleep.
+        pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
+        pinMode(PIN_AP_BTN, INPUT_PULLUP);
+        gpio_sleep_set_direction((gpio_num_t)PIN_BOOT_BTN, GPIO_MODE_INPUT);
+        gpio_sleep_set_pull_mode((gpio_num_t)PIN_BOOT_BTN, GPIO_PULLUP_ONLY);
+        gpio_sleep_set_direction((gpio_num_t)PIN_AP_BTN, GPIO_MODE_INPUT);
+        gpio_sleep_set_pull_mode((gpio_num_t)PIN_AP_BTN, GPIO_PULLUP_ONLY);
+
+        // ISR latch for fast press/release (hardware status can read zero).
+        s_lightSleepIsrStatus = 0;
+        const esp_err_t isrServiceErr = gpio_install_isr_service(0); // INVALID_STATE = already installed, OK
+        gpio_set_intr_type((gpio_num_t)PIN_BOOT_BTN, GPIO_INTR_LOW_LEVEL);
+        gpio_set_intr_type((gpio_num_t)PIN_AP_BTN, GPIO_INTR_LOW_LEVEL);
+        const esp_err_t isrBootErr = gpio_isr_handler_add(
+            (gpio_num_t)PIN_BOOT_BTN, lightSleepWakeIsr, (void *)(uintptr_t)PIN_BOOT_BTN);
+        const esp_err_t isrUserErr = gpio_isr_handler_add(
+            (gpio_num_t)PIN_AP_BTN, lightSleepWakeIsr, (void *)(uintptr_t)PIN_AP_BTN);
+
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+        const esp_err_t gpioWakeErr = esp_sleep_enable_gpio_wakeup();
+        const esp_err_t bootWakeErr = gpio_wakeup_enable((gpio_num_t)PIN_BOOT_BTN, GPIO_INTR_LOW_LEVEL);
+        const esp_err_t userWakeErr = gpio_wakeup_enable((gpio_num_t)PIN_AP_BTN, GPIO_INTR_LOW_LEVEL);
+        const esp_err_t timerErr    = maxMs > 0
+            ? esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(maxMs) * 1000ULL)
+            : ESP_OK;
+
+        const bool setupOk =
+            (isrServiceErr == ESP_OK || isrServiceErr == ESP_ERR_INVALID_STATE) &&
+            isrBootErr == ESP_OK && isrUserErr == ESP_OK &&
+            gpioWakeErr == ESP_OK && bootWakeErr == ESP_OK &&
+            userWakeErr == ESP_OK && timerErr == ESP_OK;
+        log_i(TAG,
+              "Light sleep setup: maxMs=%lu isrService=%d isrBoot=%d isrUser=%d gpioWake=%d bootWake=%d userWake=%d timer=%d",
+              static_cast<unsigned long>(maxMs),
+              (int)isrServiceErr, (int)isrBootErr, (int)isrUserErr,
+              (int)gpioWakeErr, (int)bootWakeErr, (int)userWakeErr, (int)timerErr);
+        if (!setupOk) {
+            // Critical: a timer-only light sleep could never report button wakes.
+            log_e(TAG, "Light sleep setup failed — skipping sleep");
+            gpio_isr_handler_remove((gpio_num_t)PIN_BOOT_BTN);
+            gpio_isr_handler_remove((gpio_num_t)PIN_AP_BTN);
+            gpio_set_intr_type((gpio_num_t)PIN_BOOT_BTN, GPIO_INTR_DISABLE);
+            gpio_set_intr_type((gpio_num_t)PIN_AP_BTN, GPIO_INTR_DISABLE);
+            return LightWake::Other;
+        }
+
+        Serial.flush(); // drain USB CDC TX buffer before the CPU stalls
+        esp_light_sleep_start();
+
+        // Latch wake status immediately after return.
+        const uint64_t gpioStatus = static_cast<uint64_t>(GPIO.status) |
+                                    (static_cast<uint64_t>(GPIO.status1.val) << 32);
+        const uint64_t isrStatus  = s_lightSleepIsrStatus;
+
+        // Cleanup: disarm wake sources and remove the temporary ISRs.
+        gpio_wakeup_disable((gpio_num_t)PIN_BOOT_BTN);
+        gpio_wakeup_disable((gpio_num_t)PIN_AP_BTN);
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+        gpio_isr_handler_remove((gpio_num_t)PIN_BOOT_BTN);
+        gpio_isr_handler_remove((gpio_num_t)PIN_AP_BTN);
+        gpio_set_intr_type((gpio_num_t)PIN_BOOT_BTN, GPIO_INTR_DISABLE);
+        gpio_set_intr_type((gpio_num_t)PIN_AP_BTN, GPIO_INTR_DISABLE);
+
+        const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+        const LightWake wake = classifyLightWake(
+            cause == ESP_SLEEP_WAKEUP_TIMER,
+            cause == ESP_SLEEP_WAKEUP_GPIO,
+            gpioStatus | isrStatus,
+            PIN_BOOT_BTN, PIN_AP_BTN,
+            digitalRead(PIN_BOOT_BTN) == LOW,
+            digitalRead(PIN_AP_BTN) == LOW);
+        log_i(TAG,
+              "Light sleep returned: cause=%d statusHi=0x%08lx statusLo=0x%08lx isrHi=0x%08lx isrLo=0x%08lx bootLvl=%d userLvl=%d wake=%d",
+              (int)cause,
+              (unsigned long)(uint32_t)(gpioStatus >> 32), (unsigned long)(uint32_t)gpioStatus,
+              (unsigned long)(uint32_t)(isrStatus >> 32), (unsigned long)(uint32_t)isrStatus,
+              (int)digitalRead(PIN_BOOT_BTN), (int)digitalRead(PIN_AP_BTN), (int)wake);
+        return wake;
     }
 
     uint8_t bootButtonPin() const override { return PIN_BOOT_BTN; }

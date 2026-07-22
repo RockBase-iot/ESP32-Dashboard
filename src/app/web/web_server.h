@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 // WebServer — lightweight HTTP config portal running in Station mode.
 //
 // Start this AFTER WiFi connects (in STA mode, not AP).
@@ -15,4 +17,9 @@ public:
 
     // Stop the server (call before deep sleep if deep sleep re-enabled).
     void stop();
+
+    // millis() of the most recent HTTP request (or start(), whichever is
+    // later). The config window uses this to extend its inactivity budget
+    // while the user is actively browsing the portal.
+    uint32_t lastActivityMs() const;
 };

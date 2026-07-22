@@ -29,6 +29,7 @@
 #define NVS_KEY_ROTATE_MINUTES   "RotMin"
 #define NVS_KEY_TIME_ZONE_ID     "TzId"
 #define NVS_KEY_CURRENT_PAGE     "CurPage"
+#define NVS_KEY_PORTAL_WINDOW    "PortalSec"
 
 // ─── Default values (used when NVS key is absent) ─────────────────────────
 // Open-Meteo is fully free and requires no API key.
@@ -52,3 +53,4 @@
 #define DEFAULT_CONFIG_VERSION   2
 #define DEFAULT_PAGE_TEMPLATE    0
 #define DEFAULT_ROTATE_MINUTES   0
+#define DEFAULT_PORTAL_WINDOW_SEC 30      // power-on config window; 0 = disabled

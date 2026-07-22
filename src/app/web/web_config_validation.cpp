@@ -34,3 +34,13 @@ bool isAllowedRotationInterval(uint16_t minutes) {
 bool isSafeDashboardUrl(const std::string &url) {
     return normalizeCalendarSourceUrl(url).ok;
 }
+
+uint16_t normalizePortalWindowSec(int32_t seconds) {
+    if (seconds <= 0) {
+        return 0;
+    }
+    if (seconds > kPortalWindowSecMax) {
+        return kPortalWindowSecMax;
+    }
+    return static_cast<uint16_t>(seconds);
+}

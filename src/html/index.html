@@ -221,6 +221,10 @@ a { text-decoration: none; color: #4CAF50; }
       <span class="field-label">Wake Time (hour)</span>
       <input class="field-input" type="number" id="s_WakeTime" min="0" max="23" placeholder="0–23, display wakes at this hour">
     </div>
+    <div class="field-grid">
+      <span class="field-label">Config Window <span style="color:#666;font-weight:400;font-size:0.8rem;">(seconds)</span></span>
+      <input class="field-input" type="number" id="s_PortalSec" min="0" max="600" placeholder="0–600, portal stays online after each wake; 0 = off">
+    </div>
   </div>
   <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('schedule')">Save</button></div>
 </div>
@@ -433,6 +437,7 @@ var CARD_FIELDS = {
     { id: 's_SleepMin', key: 'SleepMin', int: true },
     { id: 's_BedTime',  key: 'BedTime',  int: true },
     { id: 's_WakeTime', key: 'WakeTime', int: true },
+    { id: 's_PortalSec', key: 'PortalSec', int: true },
   ],
   units: [
     { id: 's_UnitsTemp',   key: 'UnitsTemp' },
@@ -514,7 +519,18 @@ function saveCardConfig(card) {
     .then(function(r) { return r.json(); })
     .then(function(res) {
       if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
-      if (res.ok) showToast('Saved successfully');
+      if (res.ok) {
+        showToast('Saved successfully');
+        // Guided apply: offer an immediate restart so the new configuration
+        // takes effect now; Cancel keeps editing (applies on next wake).
+        setTimeout(function() {
+          if (confirm('Saved. Restart now to apply the new configuration?\nChoose Cancel to keep editing — changes will apply on the next wake.')) {
+            fetch('/api/system/restart', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+              .then(function() { showToast('Device is restarting...', false, 'info', 'Restart'); })
+              .catch(function() { showToast('Device is restarting...', false, 'info', 'Restart'); });
+          }
+        }, 300);
+      }
       else showToast('Save failed: ' + (res.error || 'unknown'), true);
     })
     .catch(function(e) {

@@ -33,7 +33,6 @@ static const char *TAG = "DashboardApp";
 // ── RTC-retained state (survives deep sleep) ───────────────────────────────
 RTC_DATA_ATTR uint8_t DashboardApp::_failCount = 0;
 RTC_DATA_ATTR bool    DashboardApp::_coldBoot  = true;
-RTC_DATA_ATTR bool    DashboardApp::_stayAwake = false;
 RTC_DATA_ATTR bool    DashboardApp::_apMode    = false;
 RTC_DATA_ATTR ButtonAction DashboardApp::_lastButtonAction = ButtonAction::None;
 
@@ -115,6 +114,36 @@ void configureButtonInput(uint8_t pin) {
     if (pin != 0xFF) {
         pinMode(pin, INPUT_PULLUP);
     }
+}
+
+// Block until both buttons are released (3 s cap). Called before arming the
+// low-level light-sleep wake so a still-held key cannot re-fire it instantly.
+void waitForButtonsReleased(uint8_t bootPin, uint8_t userPin) {
+    const uint32_t start = millis();
+    while ((isPressedPin(bootPin) || isPressedPin(userPin)) &&
+           millis() - start < 3000UL) {
+        delay(20);
+    }
+}
+
+// Actively poll one press through ButtonController until its action resolves
+// (all actions resolve on release). The CPU is awake here by definition — the
+// user is touching the device. Capped so a key held forever cannot trap the
+// interactive window (RecoveryAp is the longest semantic at 6 s).
+ButtonAction pollButtonPress(ButtonId id, uint8_t pin) {
+    ButtonController buttons;
+    const uint32_t start = millis();
+    while (millis() - start < 8000UL) {
+        const ButtonAction action = buttons.update(id, isPressedPin(pin), millis());
+        if (action != ButtonAction::None) {
+            return action;
+        }
+        if (!isPressedPin(pin)) {
+            return ButtonAction::None;  // released without a stable edge (bounce)
+        }
+        delay(10);
+    }
+    return ButtonAction::None;
 }
 }  // namespace
 
@@ -386,31 +415,6 @@ void DashboardApp::_renderDashboardPage(IBoard &board, PageManager &pageManager,
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Phase 2b-v — Web portal
-// ═════════════════════════════════════════════════════════════════════════════
-void DashboardApp::_runWebPortal(WifiManager &wifi, const AppConfig &cfg) {
-    if (!_stayAwake) return;
-
-    log_i(TAG, "Stay-awake mode: web portal for %lu min", kStayAwakeMs / 60000UL);
-    wifi.connect(cfg.wifiSsid, cfg.wifiPassword);
-    {
-        WebServer webServer;
-        webServer.start();
-        log_i(TAG, "Web portal running — open http://%s/ in a browser",
-              WiFi.localIP().toString().c_str());
-        uint32_t start = millis();
-        while (millis() - start < kStayAwakeMs) {
-            log_w(TAG, "Stay-awake... %lu s remaining",
-                  (kStayAwakeMs - (millis() - start)) / 1000UL);
-            delay(1000);
-        }
-    }
-    log_i(TAG, "Stay-awake timeout — going to sleep");
-    _stayAwake = false;
-    wifi.disconnect();
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
 // Utility — error page
 // ═════════════════════════════════════════════════════════════════════════════
 void DashboardApp::_showErrorPage(IBoard &board, const char *title, const char *msg) {
@@ -436,43 +440,132 @@ PageId DashboardApp::_runInteractiveWindow(IBoard &board, PageManager &pageManag
         delay(20);
     }
 
-    ButtonController buttons;
     uint32_t lastActivityMs = millis();
-    while (millis() - lastActivityMs < kInteractiveIdleSec * 1000UL) {
-        const uint32_t nowMs = millis();
-        ButtonAction action = ButtonAction::None;
+    const uint32_t budgetMs = kInteractiveIdleSec * 1000UL;
+    while (true) {
+        const uint32_t elapsedMs = millis() - lastActivityMs;
+        if (elapsedMs >= budgetMs) {
+            break;  // never arm light sleep with an empty budget
+        }
 
+        // Sleep until a button edge or the remaining inactivity budget expires.
+        const LightWake wake = board.lightSleepMs(budgetMs - elapsedMs);
+        if (interactiveWindowShouldExit(wake, millis() - lastActivityMs, budgetMs)) {
+            break;
+        }
+        if (wake != LightWake::BootButton && wake != LightWake::UserButton) {
+            continue;  // spurious wake — re-arm light sleep
+        }
+
+        // A button woke the CPU: classify the press (actions resolve on release).
+        const bool isBoot  = (wake == LightWake::BootButton);
+        const ButtonAction action = pollButtonPress(isBoot ? ButtonId::Boot : ButtonId::User,
+                                                    isBoot ? bootPin : userPin);
+        waitForButtonsReleased(bootPin, userPin);
+        if (action == ButtonAction::None) {
+            continue;  // bounce-only wake
+        }
+
+        _lastButtonAction = action;
+        log_i(TAG, "Interactive button action: %s", buttonActionName(action));
+
+        if (action == ButtonAction::OpenConfig || action == ButtonAction::RecoveryAp) {
+            _apMode = true;
+            _enterApMode(board);
+            return pageManager.current();
+        }
+
+        const PageId selectedPage = applyButtonPageAction(pageManager, action);
+        if (action == ButtonAction::NextPage || action == ButtonAction::PreviousPage) {
+            _renderDashboardPage(board, pageManager, selectedPage,
+                                 static_cast<int64_t>(time(nullptr)),
+                                 weather, cfg, localIP);
+            const uint32_t contentHash = dashboardContentHash(selectedPage, weather, localIP);
+            gDashboardRtcPageState = pageManager.snapshotRtcState(static_cast<int64_t>(time(nullptr)),
+                                                                 contentHash);
+        }
+        // Reset the inactivity budget AFTER processing so the render time does
+        // not eat into the user's 30 s.
+        lastActivityMs = millis();
+    }
+
+    return pageManager.current();
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Phase 2b-vii — Power-on config window (PortalSec > 0)
+// ═════════════════════════════════════════════════════════════════════════════
+// Keeps WiFi associated (modem sleep is enabled by the caller) and serves the
+// web portal while buttons stay active. Button actions and web requests both
+// refresh the inactivity budget; a hard cap bounds the total on-time.
+PageId DashboardApp::_runConfigWindow(IBoard &board, PageManager &pageManager,
+                                      WeatherClass &weather, const AppConfig &cfg,
+                                      const String &localIP) {
+    const uint8_t bootPin = board.bootButtonPin();
+    const uint8_t userPin = board.apButtonPin();
+    configureButtonInput(bootPin);
+    configureButtonInput(userPin);
+
+    WebServer webServer;
+    webServer.start();
+    log_i(TAG, "Config window: %u s — portal at http://%s/",
+          static_cast<unsigned>(cfg.portalWindowSec), localIP.c_str());
+
+    ButtonController buttons;
+    const uint32_t budgetMs      = static_cast<uint32_t>(cfg.portalWindowSec) * 1000UL;
+    const uint32_t hardCapMs     = 10UL * 60UL * 1000UL;
+    const uint32_t windowStartMs = millis();
+    uint32_t lastActivityMs      = windowStartMs;
+
+    while (millis() - lastActivityMs < budgetMs &&
+           millis() - windowStartMs < hardCapMs) {
+        // Active browsing extends the window (wrap-safe comparison).
+        const uint32_t webMs = webServer.lastActivityMs();
+        if (static_cast<int32_t>(webMs - lastActivityMs) > 0) {
+            lastActivityMs = webMs;
+        }
+
+        // Edge-based button polling: actions fire once, on release.
+        ButtonAction action = ButtonAction::None;
         if (bootPin != 0xFF) {
-            action = buttons.update(ButtonId::Boot, isPressedPin(bootPin), nowMs);
+            action = buttons.update(ButtonId::Boot, isPressedPin(bootPin), millis());
         }
         if (action == ButtonAction::None && userPin != 0xFF) {
-            action = buttons.update(ButtonId::User, isPressedPin(userPin), nowMs);
+            action = buttons.update(ButtonId::User, isPressedPin(userPin), millis());
+        }
+        if (action == ButtonAction::None) {
+            delay(20);
+            continue;
         }
 
-        if (action != ButtonAction::None) {
-            _lastButtonAction = action;
+        _lastButtonAction = action;
+        lastActivityMs = millis();
+        log_i(TAG, "Config-window button action: %s", buttonActionName(action));
+
+        if (action == ButtonAction::OpenConfig || action == ButtonAction::RecoveryAp) {
+            webServer.stop();
+            _apMode = true;
+            _enterApMode(board);  // never returns
+            return pageManager.current();
+        }
+
+        const PageId selectedPage = applyButtonPageAction(pageManager, action);
+        if (action == ButtonAction::NextPage || action == ButtonAction::PreviousPage) {
+            _renderDashboardPage(board, pageManager, selectedPage,
+                                 static_cast<int64_t>(time(nullptr)),
+                                 weather, cfg, localIP);
+            const uint32_t contentHash = dashboardContentHash(selectedPage, weather, localIP);
+            gDashboardRtcPageState = pageManager.snapshotRtcState(static_cast<int64_t>(time(nullptr)),
+                                                                 contentHash);
+            // Reset the budget AFTER rendering so refresh time is not billed
+            // to the user's window.
             lastActivityMs = millis();
-            log_i(TAG, "Interactive button action: %s", buttonActionName(action));
-
-            if (action == ButtonAction::OpenConfig || action == ButtonAction::RecoveryAp) {
-                _apMode = true;
-                _enterApMode(board);
-                return pageManager.current();
-            }
-
-            const PageId selectedPage = applyButtonPageAction(pageManager, action);
-            if (action == ButtonAction::NextPage || action == ButtonAction::PreviousPage) {
-                _renderDashboardPage(board, pageManager, selectedPage,
-                                     static_cast<int64_t>(time(nullptr)),
-                                     weather, cfg, localIP);
-                const uint32_t contentHash = dashboardContentHash(selectedPage, weather, localIP);
-                gDashboardRtcPageState = pageManager.snapshotRtcState(static_cast<int64_t>(time(nullptr)),
-                                                                     contentHash);
-            }
         }
         delay(20);
     }
 
+    log_i(TAG, "Config window closed");
+    webServer.stop();
     return pageManager.current();
 }
 
@@ -532,13 +625,8 @@ void DashboardApp::run() {
     const bool forceInitialRender = _coldBoot;
     if (_coldBoot) {
         char splashBuf[64];
-        if (_stayAwake) {
-            snprintf(splashBuf, sizeof(splashBuf), "Waking up...\nOnline for %lu min",
-                     kStayAwakeMs / 60000UL);
-        } else {
-            snprintf(splashBuf, sizeof(splashBuf), "Connecting to\n%s...",
-                     cfg.wifiSsid.c_str());
-        }
+        snprintf(splashBuf, sizeof(splashBuf), "Connecting to\n%s...",
+                 cfg.wifiSsid.c_str());
         _showLoadingPage(board, splashBuf);
     }
     _coldBoot = false;
@@ -553,10 +641,10 @@ void DashboardApp::run() {
     WeatherClass weather;
     String localIP;
     bool dataOk = _fetchData(board, weather, cfg, localIP);
-    wifi.disconnect();
-    log_i(TAG, "WiFi disconnected");
 
     if (!dataOk) {
+        wifi.disconnect();
+        log_i(TAG, "WiFi disconnected");
         log_i(TAG, "Sleeping for %d minutes", cfg.sleepDuration);
         _enterScheduledSleep(board,
                              static_cast<uint64_t>(cfg.sleepDuration) * 60ULL * 1000000ULL,
@@ -592,8 +680,18 @@ void DashboardApp::run() {
         gDashboardRtcPageState = pageManager.snapshotRtcState(previousRtcPageState.lastFullRefreshUtc,
                                                              previousRtcPageState.lastContentHash);
     }
-    _runWebPortal(wifi, cfg);
-    const PageId finalPage = _runInteractiveWindow(board, pageManager, weather, cfg, localIP);
+    PageId finalPage;
+    if (cfg.portalWindowSec > 0) {
+        // Online profile: keep WiFi associated (modem sleep) and serve the
+        // web portal for the configured window; buttons stay active too.
+        WiFi.setSleep(true);
+        finalPage = _runConfigWindow(board, pageManager, weather, cfg, localIP);
+    } else {
+        // Offline profile: radios off, light-sleep button window.
+        wifi.disconnect();
+        log_i(TAG, "WiFi disconnected");
+        finalPage = _runInteractiveWindow(board, pageManager, weather, cfg, localIP);
+    }
     log_i(TAG, "Sleeping for %d minutes", cfg.sleepDuration);
     _enterScheduledSleep(board,
                          static_cast<uint64_t>(cfg.sleepDuration) * 60ULL * 1000000ULL,

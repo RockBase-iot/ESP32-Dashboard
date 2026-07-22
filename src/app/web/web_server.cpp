@@ -7,6 +7,7 @@
 
 #include "app/config/app_config.h"
 #include "app/config/nvs_table.h"
+#include "app/web/web_config_validation.h"
 #include "utils/logger.h"
 
 static const char *TAG_WS = "WebServer";
@@ -14,6 +15,13 @@ static const char *TAG_WS = "WebServer";
 static AsyncWebServer _ws(80);
 static bool _ws_started = false;
 static constexpr size_t kMaxConfigPatchBytes = 4096;
+
+// millis() of the most recent request; read by the config-window loop.
+static volatile uint32_t _lastRequestMs = 0;
+
+static void touchActivity() {
+    _lastRequestMs = millis();
+}
 
 static bool isSensitiveConfigKey(const String &key) {
     return key == NVS_KEY_WIFI_PASSWORD;
@@ -31,6 +39,7 @@ static String configToJson(const AppConfig &cfg) {
     doc[NVS_KEY_SLEEP_DURATION] = cfg.sleepDuration;
     doc[NVS_KEY_BED_TIME]       = cfg.bedTime;
     doc[NVS_KEY_WAKE_TIME]      = cfg.wakeTime;
+    doc[NVS_KEY_PORTAL_WINDOW]  = cfg.portalWindowSec;
     doc[NVS_KEY_UNITS_TEMP]     = cfg.unitsTemp;
     doc[NVS_KEY_UNITS_SPEED]    = cfg.unitsSpeed;
     doc[NVS_KEY_UNITS_PRES]     = cfg.unitsPres;
@@ -87,6 +96,12 @@ static bool applyPatch(const String &body) {
     tryInt(NVS_KEY_SLEEP_DURATION,cfg.sleepDuration);
     tryInt(NVS_KEY_BED_TIME,      cfg.bedTime);
     tryInt(NVS_KEY_WAKE_TIME,     cfg.wakeTime);
+    {
+        JsonVariantConst portalVar = obj[NVS_KEY_PORTAL_WINDOW];
+        if (!portalVar.isNull()) {
+            cfg.portalWindowSec = normalizePortalWindowSec(portalVar.as<int32_t>());
+        }
+    }
     tryStr(NVS_KEY_UNITS_TEMP,    cfg.unitsTemp);
     tryStr(NVS_KEY_UNITS_SPEED,   cfg.unitsSpeed);
     tryStr(NVS_KEY_UNITS_PRES,    cfg.unitsPres);
@@ -146,11 +161,13 @@ void WebServer::start() {
 
     // ── GET / → index.html.gz ────────────────────────────────────────────────
     _ws.on("/", HTTP_GET, [serveGz](AsyncWebServerRequest *req) {
+        touchActivity();
         serveGz(req, "/index.html.gz", "text/html");
     });
 
     // ── GET /api/config → full config JSON (password redacted) ──────────────
     _ws.on("/api/config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        touchActivity();
         AppConfig cfg;
         loadAppConfig(cfg);
         req->send(200, "application/json", configToJson(cfg));
@@ -159,6 +176,7 @@ void WebServer::start() {
     // ── POST /api/config → JSON patch ────────────────────────────────────────
     _ws.on("/api/config", HTTP_POST,
         [](AsyncWebServerRequest *req) {
+            touchActivity();
             String *body = reinterpret_cast<String *>(req->_tempObject);
             if (req->contentLength() > kMaxConfigPatchBytes) {
                 delete body;
@@ -184,6 +202,7 @@ void WebServer::start() {
 
     // ── POST /api/system/restart ──────────────────────────────────────────────
     _ws.on("/api/system/restart", HTTP_POST, [](AsyncWebServerRequest *req) {
+        touchActivity();
         req->send(200, "application/json", "{\"ok\":true}");
         delay(200);
         ESP.restart();
@@ -191,11 +210,13 @@ void WebServer::start() {
 
     // ── 404 fallback ──────────────────────────────────────────────────────────
     _ws.onNotFound([](AsyncWebServerRequest *req) {
+        touchActivity();
         req->send(404, "text/plain", "Not found");
     });
 
     _ws.begin();
     _ws_started = true;
+    _lastRequestMs = millis();
     IPAddress serverIP = (WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA)
                          ? WiFi.softAPIP() : WiFi.localIP();
     log_i(TAG_WS, "HTTP server started → http://%s/", serverIP.toString().c_str());
@@ -206,4 +227,8 @@ void WebServer::stop() {
     _ws.end();
     _ws_started = false;
     log_i(TAG_WS, "HTTP server stopped");
+}
+
+uint32_t WebServer::lastActivityMs() const {
+    return _lastRequestMs;
 }

@@ -18,10 +18,23 @@ void test_validates_rotation_interval_and_https_urls() {
     TEST_ASSERT_FALSE(isSafeDashboardUrl("http://example.com/feed.ics"));
 }
 
+void test_normalizes_portal_window_seconds() {
+    // Negative and zero both disable the power-on config window.
+    TEST_ASSERT_EQUAL_UINT16(0, normalizePortalWindowSec(-5));
+    TEST_ASSERT_EQUAL_UINT16(0, normalizePortalWindowSec(0));
+    // Valid values pass through unchanged.
+    TEST_ASSERT_EQUAL_UINT16(30, normalizePortalWindowSec(30));
+    TEST_ASSERT_EQUAL_UINT16(600, normalizePortalWindowSec(600));
+    // Anything above the 10-minute hard cap is clamped.
+    TEST_ASSERT_EQUAL_UINT16(600, normalizePortalWindowSec(601));
+    TEST_ASSERT_EQUAL_UINT16(600, normalizePortalWindowSec(3600));
+}
+
 void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_redacts_calendar_urls_api_keys_wifi_passwords_and_portfolio);
     RUN_TEST(test_validates_rotation_interval_and_https_urls);
+    RUN_TEST(test_normalizes_portal_window_seconds);
     UNITY_END();
 }
 

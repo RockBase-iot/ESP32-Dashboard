@@ -2,6 +2,7 @@
 #include "settings.h"
 #include "nvs_table.h"
 #include "app/page/page_manager.h"
+#include "app/web/web_config_validation.h"
 
 namespace {
 String encodePageOrder(const uint8_t *order, size_t count) {
@@ -94,6 +95,8 @@ void loadAppConfig(AppConfig &cfg) {
     cfg.sleepDuration = s.GetI32   (NVS_KEY_SLEEP_DURATION,  DEFAULT_SLEEP_DURATION);
     cfg.bedTime       = s.GetI32   (NVS_KEY_BED_TIME,        DEFAULT_BED_TIME);
     cfg.wakeTime      = s.GetI32   (NVS_KEY_WAKE_TIME,       DEFAULT_WAKE_TIME);
+    cfg.portalWindowSec = normalizePortalWindowSec(
+        s.GetI32(NVS_KEY_PORTAL_WINDOW, DEFAULT_PORTAL_WINDOW_SEC));
     cfg.unitsTemp     = s.GetString(NVS_KEY_UNITS_TEMP,      DEFAULT_UNITS_TEMP);
     cfg.unitsSpeed    = s.GetString(NVS_KEY_UNITS_SPEED,     DEFAULT_UNITS_SPEED);
     cfg.unitsPres     = s.GetString(NVS_KEY_UNITS_PRES,      DEFAULT_UNITS_PRES);
@@ -144,6 +147,7 @@ void saveAppConfig(const AppConfig &cfg) {
     s.SetI32   (NVS_KEY_SLEEP_DURATION, cfg.sleepDuration);
     s.SetI32   (NVS_KEY_BED_TIME,       cfg.bedTime);
     s.SetI32   (NVS_KEY_WAKE_TIME,      cfg.wakeTime);
+    s.SetI32   (NVS_KEY_PORTAL_WINDOW,  static_cast<int32_t>(cfg.portalWindowSec));
     s.SetString(NVS_KEY_UNITS_TEMP,     cfg.unitsTemp);
     s.SetString(NVS_KEY_UNITS_SPEED,    cfg.unitsSpeed);
     s.SetString(NVS_KEY_UNITS_PRES,     cfg.unitsPres);

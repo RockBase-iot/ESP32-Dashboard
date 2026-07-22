@@ -29,22 +29,20 @@ private:
     // ── Tuning constants ───────────────────────────────────────────────────
     static constexpr uint32_t kSerialSettleMs  =  2000;            // ms after board.init()
     static constexpr uint32_t kLongPressMs     =  2000;            // long-press threshold
-    static constexpr uint32_t kApTimeoutMs     = 10 * 60 * 1000;   // AP mode auto-exit
-    static constexpr uint32_t kStayAwakeMs     =  5 * 60 * 1000;   // stay-awake web portal
+    static constexpr uint32_t kApTimeoutMs     = 360 * 1000;       // AP mode auto-exit (360 s)
     static constexpr uint32_t kInteractiveIdleSec = 30;            // deep-sleep entry threshold
     static constexpr int      kMaxFetchRetries =  3;               // failures before error page
 
     // ── RTC-retained state (survives deep sleep) ───────────────────────────
     static uint8_t _failCount;  // consecutive fetch failures
     static bool    _coldBoot;   // true only on first power-on
-    static bool    _stayAwake;  // short press: 5-min web portal
     static bool    _apMode;     // long press:  AP config mode
     static ButtonAction _lastButtonAction;
 
     // ── Phase helpers (called in order from run()) ─────────────────────────
 
     // 0. Read wakeup cause; classify boot-button press.
-    //    Updates _apMode / _stayAwake / _coldBoot / _failCount.
+    //    Updates _apMode / _coldBoot / _failCount.
     static void _detectWakeup();
 
     // 1. Init EPD and optional on-board sensors.
@@ -73,13 +71,15 @@ private:
                                      int64_t nowUtc, WeatherClass &weather,
                                      const AppConfig &cfg, const String &localIP);
 
-    // 2b-v. Run web portal: stay-awake (short press) or debug halt.
-    static void _runWebPortal(WifiManager &wifi, const AppConfig &cfg);
-
-    // 2b-vi. Keep buttons active before sleep; BOOT=next, USER=previous.
+    // 2b-vi. Light-sleep interactive window; BOOT=next, USER=previous.
     static PageId _runInteractiveWindow(IBoard &board, PageManager &pageManager,
                                         WeatherClass &weather, const AppConfig &cfg,
                                         const String &localIP);
+
+    // 2b-vii. Power-on config window (PortalSec > 0): web portal + buttons.
+    static PageId _runConfigWindow(IBoard &board, PageManager &pageManager,
+                                   WeatherClass &weather, const AppConfig &cfg,
+                                   const String &localIP);
 
     // Utility: draw a full-screen error message on the EPD.
     static void _showErrorPage(IBoard &board, const char *title, const char *msg);

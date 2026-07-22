@@ -28,6 +28,7 @@ struct AppConfig {
     int      sleepDuration; // minutes between wake cycles
     int      bedTime;       // hour (24-h) to pause updates
     int      wakeTime;      // hour (24-h) to resume updates
+    uint16_t portalWindowSec; // power-on web config window in seconds; 0 = disabled
 
     // Units
     String unitsTemp;    // "C" / "F"

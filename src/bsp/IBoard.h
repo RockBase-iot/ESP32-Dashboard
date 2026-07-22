@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "drivers/sensor/ISensor.h"
+#include "utils/light_wake.h"
 
 // ─── EPD driver interface ───────────────────────────────────────────────────
 class IEpdDriver {
@@ -61,6 +62,13 @@ public:
 
     // Enter deep sleep for the given duration.
     virtual void deepSleep(uint64_t microseconds) = 0;
+
+    // Enter light sleep for at most maxMs, waking early on a BOOT/USER button
+    // press (low level). Unlike deepSleep(), RAM and peripherals are retained
+    // and execution continues on the next line. Do NOT call prepareForSleep()
+    // before this — the display and sensors stay powered. Returns what caused
+    // the wake. Boards without buttons wake on the timer only.
+    virtual LightWake lightSleepMs(uint32_t maxMs) = 0;
 
     // GPIO pin numbers for physical buttons (external pull-up, pressed = LOW).
     // Returns 0xFF if this board does not have the button.
