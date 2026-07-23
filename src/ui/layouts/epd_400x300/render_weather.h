@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h>
+
 #include <string>
 #include <vector>
 
@@ -8,20 +10,27 @@
 struct WeatherDayCell {
     std::string label;
     int code = 0;
+    // Temperatures are stored as Celsius source values; renderers convert for display.
     int highC = 0;
     int lowC = 0;
+    std::string dateLabel;
 };
 
 struct WeatherHourCell {
     std::string label;
+    // Temperature is stored as a Celsius source value; renderers convert for display.
     int temperatureC = 0;
     int precipitationPct = 0;
 };
 
 struct WeatherPageSnapshot {
     std::string city;
+    std::string region;
+    std::string country;
     std::string updated;
     std::string currentCondition;
+    std::string tempUnit;
+    // Temperatures are stored as Celsius source values; renderers convert using tempUnit.
     int currentTempC = 0;
     int feelsLikeC = 0;
     int humidityPct = 0;
@@ -36,6 +45,9 @@ struct WeatherPageSnapshot {
 };
 
 WeatherPageSnapshot sampleWeatherPageSnapshot();
-void renderWeatherTodayPage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot);
-void renderWeeklyWeatherPage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot);
-void renderIndoorClimatePage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot);
+void renderWeatherTodayPage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot,
+                            size_t pageNumber = 6, size_t pageCount = 8);
+void renderWeeklyWeatherPage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot,
+                             size_t pageNumber = 6, size_t pageCount = 8);
+void renderIndoorClimatePage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot,
+                             size_t pageNumber = 6, size_t pageCount = 8);

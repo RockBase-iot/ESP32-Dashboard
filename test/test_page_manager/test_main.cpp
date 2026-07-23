@@ -1,5 +1,8 @@
 #include <unity.h>
 
+#include <algorithm>
+#include <vector>
+
 #include "app/page/page_catalog.h"
 #include "app/page/page_manager.h"
 #include "app/page/page_catalog.cpp"
@@ -14,6 +17,10 @@ PageSettings twoPageSettings() {
     settings.order[0] = PageId::Overview;
     settings.order[1] = PageId::TodayAgenda;
     return settings;
+}
+
+bool queueContains(const std::vector<PageId> &queue, PageId page) {
+    return std::find(queue.begin(), queue.end(), page) != queue.end();
 }
 }  // namespace
 
@@ -50,6 +57,43 @@ void test_page_manager_reports_enabled_page_position() {
     TEST_ASSERT_EQUAL_UINT(1, manager.pageNumber(PageId::Overview));
     TEST_ASSERT_EQUAL_UINT(2, manager.pageNumber(PageId::TodayAgenda));
     TEST_ASSERT_EQUAL_UINT(1, manager.pageNumber(PageId::WorldClock));
+}
+
+void test_default_pages_show_all_designed_pages_for_review() {
+    PageManager manager(defaultPageSettings());
+    const auto queue = manager.rotationQueue();
+
+    TEST_ASSERT_EQUAL_UINT(kPageCount, manager.pageCount());
+    TEST_ASSERT_EQUAL_UINT(kPageCount, queue.size());
+    for (const PageDescriptor &descriptor : pageCatalog()) {
+        TEST_ASSERT_TRUE(queueContains(queue, descriptor.id));
+    }
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::WeatherToday),
+                            static_cast<uint8_t>(manager.current()));
+    TEST_ASSERT_EQUAL_UINT(1, manager.pageNumber(PageId::WeatherToday));
+    TEST_ASSERT_EQUAL_UINT(kPageCount, manager.pageNumber(PageId::ImportantMilestones));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::WeatherToday),
+                            static_cast<uint8_t>(queue[0]));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::Overview),
+                            static_cast<uint8_t>(queue[1]));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::ImportantMilestones),
+                            static_cast<uint8_t>(queue[kPageCount - 1]));
+}
+
+void test_default_manual_navigation_visits_every_designed_page_once() {
+    PageManager manager(defaultPageSettings());
+    std::vector<PageId> visited = {manager.current()};
+
+    for (size_t i = 1; i < kPageCount; ++i) {
+        visited.push_back(manager.nextManual());
+    }
+
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::WeatherToday),
+                            static_cast<uint8_t>(manager.nextManual()));
+    TEST_ASSERT_EQUAL_UINT(kPageCount, visited.size());
+    for (const PageDescriptor &descriptor : pageCatalog()) {
+        TEST_ASSERT_TRUE(queueContains(visited, descriptor.id));
+    }
 }
 
 void test_manual_navigation_does_not_move_auto_cursor() {
@@ -139,6 +183,8 @@ void setup() {
     RUN_TEST(test_manual_next_and_previous_wrap_enabled_pages);
     RUN_TEST(test_disabled_pages_are_skipped);
     RUN_TEST(test_page_manager_reports_enabled_page_position);
+    RUN_TEST(test_default_pages_show_all_designed_pages_for_review);
+    RUN_TEST(test_default_manual_navigation_visits_every_designed_page_once);
     RUN_TEST(test_manual_navigation_does_not_move_auto_cursor);
     RUN_TEST(test_auto_rotation_queue_only_contains_selected_pages);
     RUN_TEST(test_first_auto_rotation_advances_from_current_page);

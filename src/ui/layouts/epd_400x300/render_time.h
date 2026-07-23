@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h>
+
 #include <string>
 #include <vector>
 
@@ -18,5 +20,7 @@ WorldClockPageSnapshot worldClockPageSnapshotAt(int64_t nowUtc,
                                                 const std::string &timezoneId,
                                                 size_t pageNumber,
                                                 size_t pageCount);
-void renderWorldClockPage(IDrawSurface &surface, const WorldClockPageSnapshot &snapshot);
-void renderFocusClockPage(IDrawSurface &surface, const WorldClockPageSnapshot &snapshot);
+void renderWorldClockPage(IDrawSurface &surface, const WorldClockPageSnapshot &snapshot,
+                          size_t pageNumber = 4, size_t pageCount = 8);
+void renderFocusClockPage(IDrawSurface &surface, const WorldClockPageSnapshot &snapshot,
+                          size_t pageNumber = 4, size_t pageCount = 8);

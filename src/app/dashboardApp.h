@@ -37,6 +37,7 @@ private:
     static uint8_t _failCount;  // consecutive fetch failures
     static bool    _coldBoot;   // true only on first power-on
     static bool    _apMode;     // long press:  AP config mode
+    static bool    _restorePersistedPage; // true after deep-sleep wake
     static ButtonAction _lastButtonAction;
 
     // ── Phase helpers (called in order from run()) ─────────────────────────
@@ -87,4 +88,3 @@ private:
     // Utility: persist current page, shut radios/peripherals down, then enter deep sleep.
     static void _enterScheduledSleep(IBoard &board, uint64_t deepSleepUs, PageId currentPage);
 };
-

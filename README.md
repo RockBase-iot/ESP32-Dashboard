@@ -1,4 +1,4 @@
-﻿# ESP32 Dashboard
+# ESP32 Dashboard
 
 An e-paper dashboard running on ESP32. The current version features a fully functional weather station powered by the free [Open-Meteo](https://open-meteo.com/) API — **no API key required** — showing current conditions, a 5-day forecast, an hourly temperature / precipitation graph, air quality, and indoor sensor data.
 
@@ -36,7 +36,7 @@ English | [简体中文](./README_cn.md)
 - Bed-time / wake-time window — no display refresh during night hours
 - Browser-based config portal (no app needed): WiFi, location, units, timezone, sleep interval
 - AP config mode (long-press Boot button) — ESP32 becomes a hotspot for first-time setup
-- Stay-awake web portal mode (short-press Boot button) — keep the portal alive for 5 min
+- Power-on config window (configurable `PortalSec`, default 30 s) — after each WiFi connection the web portal stays reachable at the device IP; `0` disables it for maximum power saving
 - SNTP time synchronisation with configurable UTC offset
 - 3-color (red/black/white) accent support on compatible panels
 - Multilingual UI: `en_US`, `zh_CN`
@@ -134,7 +134,7 @@ pio run -e nm-display-420 -t buildfs
 
 ### 6. Subsequent access
 
-Short-press the Boot button to keep the web portal alive for 5 minutes. The device stays on your home network; its IP address is shown at the bottom-left of the display. Open `http://<device-ip>` from any browser on the same network.
+After every wake the device keeps its WiFi connection open for a configurable window (`PortalSec`, default 30 s, `0` = disabled). During that window its IP address is shown at the bottom-left of the display — open `http://<device-ip>` from any browser on the same network to change settings. Saving in the portal offers an immediate restart so the new configuration is applied right away; otherwise it takes effect on the next wake.
 
 ---
 
@@ -142,8 +142,8 @@ Short-press the Boot button to keep the web portal alive for 5 minutes. The devi
 
 | Action | Result |
 |---|---|
-| Short press Boot (IO0) | 5-minute stay-awake web portal |
-| Long press Boot (IO0) ≥ 2 s | AP config mode (auto-exit after 10 min, then restart) |
+| Short press Boot (IO0) | Next page (while the device is awake) |
+| Long press Boot (IO0) ≥ 2 s | AP config mode (auto-exit after 360 s, then restart) |
 
 ---
 
@@ -160,6 +160,7 @@ All settings are stored in NVS flash and editable through the web portal:
 | City name | `Chengdu, Sichuan, China` | Display label only |
 | UTC offset | `8` | Hours from UTC (e.g. `8` = UTC+8) |
 | Sleep interval | `30` min | Minutes between display refreshes |
+| Config window | `30` s | Seconds the web portal stays reachable after each wake (`0`–`600`, `0` = off) |
 | Bed time | `0` h | Hour to pause refreshing (24-h clock) |
 | Wake time | `6` h | Hour to resume refreshing |
 | Temperature unit | `C` | `C` / `F` |
@@ -233,14 +234,14 @@ Power-on / timer wakeup
   _detectWakeup()
   ┌─────────────────────────────────┐
   │ Long press (≥2 s) → AP mode    │
-  │ Short press       → stay-awake │
+  │ Short press       → next page  │
   │ Timer / cold boot → normal     │
   └─────────────────────────────────┘
         │
         ▼
   _initHardware()      EPD init + sensor init
         │
-        ├─── AP mode ──► SoftAP + web portal → restart after 10 min
+        ├─── AP mode ──► SoftAP + web portal → restart after 360 s
         │
         ▼
   _showLoadingPage()   (cold boot / button wake only)
@@ -254,7 +255,7 @@ Power-on / timer wakeup
         ▼
   _renderWeather()     EPD page-based draw loop
         │
-        ▼  (stay-awake: run web portal for 5 min)
+        ▼  (PortalSec > 0: web portal + buttons for N s)
   WiFi disconnect → EPD hibernate → deep sleep (N minutes)
 ```
 

@@ -8,37 +8,23 @@
 namespace {
 constexpr int16_t kOverviewMargin = 18;
 
-void drawOverviewHeader(IDrawSurface &surface, const std::string &title, const std::string &rightText) {
-    calm_grid::drawPageHeader(surface, title, "", rightText, 74);
-}
-
-void drawOverviewFooter(IDrawSurface &surface, const std::string &leftText, const std::string &rightText) {
-    surface.drawText(kOverviewMargin, 286, calm_grid::fitText(surface, leftText, 166, 1),
-                     kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(392, 286, calm_grid::fitText(surface, rightText, 206, 1),
-                     kDashboardBlack, TextAlign::Right, 1);
-}
-
 void drawOverviewWeekStrip(IDrawSurface &surface, const Rect &rect) {
-    const std::array<const char *, 7> dayLabels = {"M", "T", "W", "T", "F", "S", "S"};
+    const std::array<const char *, 7> dayLabels = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
     const std::array<const char *, 7> dayDates = {"20", "21", "22", "23", "24", "25", "26"};
-    const int16_t cellW = 50;
+    const int16_t cellW = static_cast<int16_t>(rect.w / 7);
     for (size_t i = 0; i < dayLabels.size(); ++i) {
-        const int16_t x = static_cast<int16_t>(rect.x + static_cast<int16_t>(i) * 52);
-        const bool active = i == 0;
-        if (active) {
-            surface.fillRect(x, rect.y, cellW, rect.h, kDashboardAccent);
-        } else {
-            surface.fillRect(x, rect.y, cellW, rect.h, kDashboardWhite);
-        }
-        surface.drawRect(x, rect.y, cellW, rect.h, active ? kDashboardAccent : kDashboardBlack);
+        const int16_t x = static_cast<int16_t>(rect.x + static_cast<int16_t>(i) * cellW);
+        const bool active = i == 2;
         surface.drawText(static_cast<int16_t>(x + cellW / 2), static_cast<int16_t>(rect.y + 10),
-                         dayLabels[i], active ? kDashboardWhite : kDashboardBlack,
+                         dayLabels[i], active ? kDashboardAccent : kDashboardBlack,
                          TextAlign::Center, 1);
         surface.drawText(static_cast<int16_t>(x + cellW / 2), static_cast<int16_t>(rect.y + 20),
-                         dayDates[i], active ? kDashboardWhite : kDashboardBlack,
+                         dayDates[i], active ? kDashboardAccent : kDashboardBlack,
                          TextAlign::Center, 1);
     }
+    surface.drawLine(rect.x, static_cast<int16_t>(rect.y + rect.h + 4),
+                     static_cast<int16_t>(rect.x + rect.w), static_cast<int16_t>(rect.y + rect.h + 4),
+                     kDashboardBlack);
 }
 
 void drawOverviewAgendaRow(IDrawSurface &surface, const Rect &rect, const CalendarEventLine &item) {
@@ -66,11 +52,14 @@ void drawOverviewSidebarCard(IDrawSurface &surface, const Rect &rect, const std:
     surface.drawText(static_cast<int16_t>(rect.x + 5), static_cast<int16_t>(rect.y + 11),
                      calm_grid::fitText(surface, title, static_cast<int16_t>(rect.w - 10), 1),
                      accent ? kDashboardAccent : kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(static_cast<int16_t>(rect.x + 5), static_cast<int16_t>(rect.y + 25),
+    surface.drawLine(static_cast<int16_t>(rect.x + 5), static_cast<int16_t>(rect.y + 20),
+                     static_cast<int16_t>(rect.x + rect.w - 6), static_cast<int16_t>(rect.y + 20),
+                     kDashboardBlack);
+    surface.drawText(static_cast<int16_t>(rect.x + 12), static_cast<int16_t>(rect.y + 35),
                      calm_grid::fitText(surface, line1, static_cast<int16_t>(rect.w - 10), 1),
                      kDashboardBlack, TextAlign::Left, 1);
     if (!line2.empty()) {
-        surface.drawText(static_cast<int16_t>(rect.x + 5), static_cast<int16_t>(rect.y + 37),
+        surface.drawText(static_cast<int16_t>(rect.x + 12), static_cast<int16_t>(rect.y + 49),
                          calm_grid::fitText(surface, line2, static_cast<int16_t>(rect.w - 10), 1),
                          kDashboardBlack, TextAlign::Left, 1);
     }
@@ -87,7 +76,7 @@ CalendarPageSnapshot sampleCalendarPageSnapshot() {
         {"18:30", "Family dinner", "Home", false},
     };
     snapshot.timelineItems = {
-        {"09:00", "Review", "Project Atlas", true, 0},
+        {"09:00", "Review", "Project Atlas", true, 2},
         {"15:00", "Mia", "School", false, 0},
         {"08:30", "Gym", "Run", false, 1},
         {"18:00", "Piano", "Lesson", false, 1},
@@ -121,7 +110,7 @@ CalendarPageSnapshot sampleCalendarPageSnapshot() {
         snapshot.monthCells[i].text = std::to_string(day);
         snapshot.monthCells[i].muted = muted;
         snapshot.monthCells[i].today = (i == 21);
-        if (i == 21) {
+        if (i == 23) {
             snapshot.monthCells[i].detail = "Review";
             snapshot.monthCells[i].accent = true;
         }
@@ -152,23 +141,32 @@ CalendarPageSnapshot sampleCalendarPageSnapshot() {
     return snapshot;
 }
 
-void renderOverviewPage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot) {
-    drawOverviewHeader(surface, snapshot.title, snapshot.subtitle);
-    drawOverviewWeekStrip(surface, Rect{18, 54, 364, 24});
+void renderOverviewPage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot,
+                        size_t pageNumber, size_t pageCount) {
+    calm_grid::drawPrototypePageChrome(surface, "TODAY OVERVIEW",
+                                       calm_grid::PageIconKind::Overview, pageNumber, pageCount);
+    drawOverviewWeekStrip(surface, Rect{kOverviewMargin, 52, 364, 28});
 
-    const Rect agenda{18, 86, 280, 114};
+    const Rect agenda{kOverviewMargin, 86, 220, 122};
+    // surface.drawRect(agenda.x, agenda.y, agenda.w, agenda.h, kDashboardBlack);
+    surface.drawText(static_cast<int16_t>(agenda.x + 8), static_cast<int16_t>(agenda.y + 16),
+                     "TODAY AGENDA", kDashboardAccent, TextAlign::Left, 1);
+    surface.drawLine(static_cast<int16_t>(agenda.x + 8), static_cast<int16_t>(agenda.y + 26),
+                     static_cast<int16_t>(agenda.x + agenda.w - 8), static_cast<int16_t>(agenda.y + 26),
+                     kDashboardBlack);
     const int16_t rowH = 38;
     for (size_t i = 0; i < snapshot.overviewItems.size() && i < 3; ++i) {
         drawOverviewAgendaRow(surface,
-                              Rect{agenda.x, static_cast<int16_t>(agenda.y + rowH * static_cast<int16_t>(i)),
-                                   agenda.w, static_cast<int16_t>(rowH - 1)},
+                              Rect{static_cast<int16_t>(agenda.x + 8),
+                                   static_cast<int16_t>(agenda.y + 32 + rowH * static_cast<int16_t>(i)),
+                                   static_cast<int16_t>(agenda.w - 16), static_cast<int16_t>(rowH - 4)},
                               snapshot.overviewItems[i]);
     }
 
-    drawOverviewSidebarCard(surface, Rect{306, 86, 76, 42}, "LOCAL NOTE",
+    drawOverviewSidebarCard(surface, Rect{252, 86, 130, 85}, "LOCAL NOTE",
                             snapshot.notes.size() > 0 ? snapshot.notes[0] : "",
                             snapshot.notes.size() > 1 ? snapshot.notes[1] : "");
-    drawOverviewSidebarCard(surface, Rect{306, 138, 76, 44}, "72F", "Sunny", "Rain 10%", true);
-
-    drawOverviewFooter(surface, "Updated 08:42", "BOOT next - USER previous");
+    drawOverviewSidebarCard(surface, Rect{252, 180, 130, 75}, "MILESTONES",
+                            snapshot.milestones.size() > 0 ? snapshot.milestones[0] : "",
+                            "Prototype refresh", true);
 }

@@ -6,35 +6,6 @@
 #include "ui/components/calm_grid.h"
 
 namespace {
-void drawClockHeader(IDrawSurface &surface, const std::string &title, const std::string &rightText) {
-    calm_grid::drawPageHeader(surface, title, rightText, "", 74);
-}
-
-void drawWorldClockHeader(IDrawSurface &surface, const std::string &dateText,
-                          const std::string &pageTitle) {
-    surface.fillScreen(kDashboardWhite);
-    surface.drawRect(10, 12, 12, 12, kDashboardBlack);
-    surface.drawLine(12, 17, 20, 17, kDashboardBlack);
-    surface.drawLine(14, 15, 14, 19, kDashboardBlack);
-    surface.drawText(28, 14, calm_grid::fitText(surface, dateText, 180, 1),
-                     kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(28, 31, calm_grid::fitText(surface, pageTitle, 168, 1),
-                     kDashboardBlack, TextAlign::Left, 1);
-    surface.drawLine(18, 45, static_cast<int16_t>(surface.width() - 18), 45, kDashboardBlack);
-    surface.drawLine(18, 46, 92, 46, kDashboardAccent);
-}
-
-void drawClockFooter(IDrawSurface &surface, const std::string &leftText, const std::string &rightText) {
-    if (!leftText.empty()) {
-        surface.drawText(18, 286, calm_grid::fitText(surface, leftText, 176, 1),
-                         kDashboardBlack, TextAlign::Left, 1);
-    }
-    if (!rightText.empty()) {
-        surface.drawText(382, 286, calm_grid::fitText(surface, rightText, 176, 1),
-                         kDashboardBlack, TextAlign::Right, 1);
-    }
-}
-
 std::string clockDisplayLabel(const std::string &label) {
     if (label == "New York") {
         return "NEW YORK";
@@ -69,13 +40,10 @@ std::string clockZoneStatus(const std::string &label) {
 
 std::string clockHeaderMetadata(const WorldClockPageSnapshot &snapshot,
                                 const std::string &pageTitle) {
-    const std::string pageIndicator = snapshot.pageIndicator.empty()
-        ? "4/12"
-        : snapshot.pageIndicator;
     if (snapshot.subtitle.empty() || snapshot.subtitle == pageTitle) {
-        return pageIndicator;
+        return "WED 14:32 JUL 22, 2026";
     }
-    return snapshot.subtitle + "   " + pageIndicator;
+    return snapshot.subtitle;
 }
 
 void drawWorldClockCard(IDrawSurface &surface, const Rect &rect, const WorldClockSlot &slot,
@@ -85,7 +53,7 @@ void drawWorldClockCard(IDrawSurface &surface, const Rect &rect, const WorldCloc
                      calm_grid::fitText(surface, clockDisplayLabel(slot.label),
                                         static_cast<int16_t>(rect.w - 20), 1),
                      kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(static_cast<int16_t>(rect.x + 8), static_cast<int16_t>(rect.y + 38),
+    surface.drawText(static_cast<int16_t>(rect.x + 8), static_cast<int16_t>(rect.y + 34),
                      slot.timeText, accentTime ? kDashboardAccent : kDashboardBlack,
                      TextAlign::Left, 3);
     surface.drawText(static_cast<int16_t>(rect.x + 8), static_cast<int16_t>(rect.y + rect.h - 10),
@@ -114,26 +82,30 @@ WorldClockPageSnapshot worldClockPageSnapshotAt(int64_t nowUtc,
     return snapshot;
 }
 
-void renderWorldClockPage(IDrawSurface &surface, const WorldClockPageSnapshot &snapshot) {
+void renderWorldClockPage(IDrawSurface &surface, const WorldClockPageSnapshot &snapshot,
+                          size_t pageNumber, size_t pageCount) {
     const std::string pageTitle = snapshot.title.empty() ? "WORLD CLOCK" : snapshot.title;
-    drawWorldClockHeader(surface, clockHeaderMetadata(snapshot, pageTitle), pageTitle);
+    calm_grid::drawPrototypePageChrome(surface, pageTitle, calm_grid::PageIconKind::Clock,
+                                       pageNumber, pageCount, clockHeaderMetadata(snapshot, pageTitle));
     const std::array<Rect, 4> cards = {{
-        {18, 54, 176, 82},
-        {206, 54, 176, 82},
-        {18, 144, 176, 82},
-        {206, 144, 176, 82},
+        {18, 64, 176, 78},
+        {206, 64, 176, 78},
+        {18, 154, 176, 78},
+        {206, 154, 176, 78},
     }};
     const size_t count = std::min<size_t>(cards.size(), snapshot.model.clocks.size());
+    // TODO: "London" change to user location city
     for (size_t i = 0; i < count; ++i) {
         drawWorldClockCard(surface, cards[i], snapshot.model.clocks[i],
                            snapshot.model.clocks[i].label == "London");
     }
-    drawClockFooter(surface, "12/24 hour configurable", "");
 }
 
-void renderFocusClockPage(IDrawSurface &surface, const WorldClockPageSnapshot &snapshot) {
+void renderFocusClockPage(IDrawSurface &surface, const WorldClockPageSnapshot &snapshot,
+                          size_t pageNumber, size_t pageCount) {
     const std::string pageTitle = "FOCUS CLOCK";
-    drawClockHeader(surface, pageTitle, clockHeaderMetadata(snapshot, pageTitle));
+    calm_grid::drawPrototypePageChrome(surface, pageTitle, calm_grid::PageIconKind::Clock,
+                                       pageNumber, pageCount, clockHeaderMetadata(snapshot, pageTitle));
     surface.drawRect(18, 62, 364, 74, kDashboardBlack);
     surface.drawText(28, 86,
                      snapshot.model.focusLabel.empty() ? "FOCUS CLOCK" : snapshot.model.focusLabel,
@@ -145,5 +117,4 @@ void renderFocusClockPage(IDrawSurface &surface, const WorldClockPageSnapshot &s
         const Rect rect{static_cast<int16_t>(18 + 188 * static_cast<int16_t>(i)), 156, 176, 74};
         drawWorldClockCard(surface, rect, snapshot.model.clocks[i], i == 1);
     }
-    drawClockFooter(surface, "Pinned city view", "Updated by SNTP");
 }

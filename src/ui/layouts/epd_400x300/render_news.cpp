@@ -6,69 +6,63 @@
 #include "ui/components/calm_grid.h"
 
 namespace {
-constexpr int16_t kNewsMargin = 8;
-
-void drawNewsHeader(IDrawSurface &surface, const std::string &title, const std::string &rightText) {
-    calm_grid::drawPageHeader(surface, title, rightText, "", 74);
-}
-
-void drawNewsFooter(IDrawSurface &surface, const std::string &leftText, const std::string &rightText) {
-    surface.drawText(kNewsMargin, 286, leftText, kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(392, 286, rightText, kDashboardBlack, TextAlign::Right, 1);
-}
-
 void drawNewsHeadlineRow(IDrawSurface &surface, const Rect &rect, int index,
                          const NewsItemCell &item) {
+    surface.drawRect(rect.x, rect.y, rect.w, rect.h, kDashboardBlack);
     surface.drawLine(rect.x, static_cast<int16_t>(rect.y + rect.h - 1),
                      static_cast<int16_t>(rect.x + rect.w), static_cast<int16_t>(rect.y + rect.h - 1),
                      kDashboardBlack);
-    calm_grid::drawSectionMarker(surface, static_cast<int16_t>(rect.x + 4),
-                                 static_cast<int16_t>(rect.y + 9));
-    surface.drawText(static_cast<int16_t>(rect.x + 16), static_cast<int16_t>(rect.y + 14),
-                     std::to_string(index), kDashboardAccent, TextAlign::Left, 1);
-    surface.drawText(static_cast<int16_t>(rect.x + 24), static_cast<int16_t>(rect.y + 12),
-                     calm_grid::fitText(surface, item.title, static_cast<int16_t>(rect.w - 92), 1),
+    surface.fillRect(static_cast<int16_t>(rect.x + 12), static_cast<int16_t>(rect.y + 10),
+                     6, 12, kDashboardAccent);
+    surface.drawText(static_cast<int16_t>(rect.x + 28), static_cast<int16_t>(rect.y + 12),
+                     calm_grid::fitText(surface, item.title, static_cast<int16_t>(rect.w - 104), 1),
                      kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(static_cast<int16_t>(rect.x + rect.w - 4), static_cast<int16_t>(rect.y + 12),
+    surface.drawText(static_cast<int16_t>(rect.x + rect.w - 10), static_cast<int16_t>(rect.y + 12),
                      calm_grid::fitText(surface, item.source, 48, 1),
                      kDashboardBlack, TextAlign::Right, 1);
-    surface.drawText(static_cast<int16_t>(rect.x + rect.w - 4), static_cast<int16_t>(rect.y + 24),
-                     calm_grid::fitText(surface, item.detail, 48, 1),
-                     kDashboardBlack, TextAlign::Right, 1);
+    // surface.drawText(static_cast<int16_t>(rect.x + rect.w - 10), static_cast<int16_t>(rect.y + 30),
+    //                  calm_grid::fitText(surface, item.detail, 48, 1),
+    //                  kDashboardBlack, TextAlign::Right, 1);
+    (void)index;
 }
 
 void drawNewsHistoryCard(IDrawSurface &surface, const Rect &rect, const NewsItemCell &item) {
     surface.drawRect(rect.x, rect.y, rect.w, rect.h, kDashboardAccent);
-    calm_grid::drawSectionMarker(surface, static_cast<int16_t>(rect.x + 10),
-                                 static_cast<int16_t>(rect.y + 16));
-    surface.drawText(static_cast<int16_t>(rect.x + 28), static_cast<int16_t>(rect.y + 33),
+    surface.drawText(static_cast<int16_t>(rect.x + 18), static_cast<int16_t>(rect.y + 13),
                      item.title, kDashboardAccent, TextAlign::Left, 2);
-    surface.drawText(static_cast<int16_t>(rect.x + 94), static_cast<int16_t>(rect.y + 16),
+    surface.drawText(static_cast<int16_t>(rect.x + 86), static_cast<int16_t>(rect.y + 7),
                      "Today in History", kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(static_cast<int16_t>(rect.x + 94), static_cast<int16_t>(rect.y + 30),
-                     calm_grid::fitText(surface, item.detail, static_cast<int16_t>(rect.w - 104), 1),
-                     kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(static_cast<int16_t>(rect.x + 94), static_cast<int16_t>(rect.y + 42),
-                     calm_grid::fitText(surface, item.source, static_cast<int16_t>(rect.w - 104), 1),
+    surface.drawText(static_cast<int16_t>(rect.x + 86), static_cast<int16_t>(rect.y + 18),
+                     calm_grid::fitText(surface, item.detail, static_cast<int16_t>(rect.w - 100), 1),
                      kDashboardBlack, TextAlign::Left, 1);
 }
 
 void renderNewsLayout(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
-                      const std::string &headerTitle) {
-    drawNewsHeader(surface, headerTitle, "RSS   8/12");
-    const std::array<Rect, 3> rows = {{
-        {18, 56, 364, 40},
-        {18, 96, 364, 40},
-        {18, 136, 364, 40},
-    }};
+                      const std::string &headerTitle, size_t pageNumber, size_t pageCount) {
+    calm_grid::drawPrototypePageChrome(surface, headerTitle, calm_grid::PageIconKind::News,
+                                       pageNumber, pageCount);
+    surface.drawRect(18, 62, 364, 50, kDashboardBlack);
+    surface.drawText(26, 75, "TOP STORIES", kDashboardAccent, TextAlign::Left, 1);
+    surface.drawLine(26, 86, 374, 86, kDashboardBlack);
+    if (!snapshot.headlines.empty()) {
+        surface.drawText(28, 98,
+                         calm_grid::fitText(surface, snapshot.headlines.front().title, 340, 1),
+                         kDashboardBlack, TextAlign::Left, 1);
+        // surface.drawText(28, 120,
+        //                  calm_grid::fitText(surface, snapshot.headlines.front().detail, 340, 1),
+        //                  kDashboardBlack, TextAlign::Left, 1);
+    }
+
+    const std::array<Rect, 3> rows = {{{18, 120, 364, 30},
+                                       {18, 158, 364, 30},
+                                       {18, 196, 364, 30}}};
     const size_t count = std::min<size_t>(rows.size(), snapshot.headlines.size());
     for (size_t i = 0; i < count; ++i) {
         drawNewsHeadlineRow(surface, rows[i], static_cast<int>(i + 1), snapshot.headlines[i]);
     }
     if (!snapshot.history.empty()) {
-        drawNewsHistoryCard(surface, Rect{18, 182, 364, 56}, snapshot.history.front());
+        drawNewsHistoryCard(surface, Rect{18, 234, 364, 46}, snapshot.history.front());
     }
-    drawNewsFooter(surface, "RSS - Wikimedia - No AI key", "Updated 08:30");
 }
 }  // namespace
 
@@ -87,10 +81,12 @@ NewsPageSnapshot sampleNewsPageSnapshot() {
     return snapshot;
 }
 
-void renderHeadlinesPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot) {
-    renderNewsLayout(surface, snapshot, "HEADLINES");
+void renderHeadlinesPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
+                         size_t pageNumber, size_t pageCount) {
+    renderNewsLayout(surface, snapshot, "HEADLINES", pageNumber, pageCount);
 }
 
-void renderTodayInHistoryPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot) {
-    renderNewsLayout(surface, snapshot, "TODAY IN HISTORY");
+void renderTodayInHistoryPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
+                              size_t pageNumber, size_t pageCount) {
+    renderNewsLayout(surface, snapshot, "TODAY IN HISTORY", pageNumber, pageCount);
 }

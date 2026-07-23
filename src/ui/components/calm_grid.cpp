@@ -45,6 +45,142 @@ void drawBatteryIcon(IDrawSurface &surface, int16_t x, int16_t y, uint16_t color
     surface.fillRect(static_cast<int16_t>(x + 12), y + 3, 2, 3, color);
 }
 
+void drawPrototypeWifiIcon(IDrawSurface &surface, int16_t x, int16_t y) {
+    const auto stroke = [&surface](int16_t x0, int16_t y0, int16_t x1, int16_t y1) {
+        surface.drawLine(x0, y0, x1, y1, kDashboardBlack);
+        surface.drawLine(x0, static_cast<int16_t>(y0 + 1), x1,
+                         static_cast<int16_t>(y1 + 1), kDashboardBlack);
+    };
+
+    stroke(static_cast<int16_t>(x + 1), static_cast<int16_t>(y + 5),
+           static_cast<int16_t>(x + 6), y);
+    stroke(static_cast<int16_t>(x + 6), y, static_cast<int16_t>(x + 12), y);
+    stroke(static_cast<int16_t>(x + 12), y, static_cast<int16_t>(x + 17),
+           static_cast<int16_t>(y + 5));
+
+    stroke(static_cast<int16_t>(x + 4), static_cast<int16_t>(y + 10),
+           static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 7));
+    stroke(static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 7),
+           static_cast<int16_t>(x + 11), static_cast<int16_t>(y + 7));
+    stroke(static_cast<int16_t>(x + 11), static_cast<int16_t>(y + 7),
+           static_cast<int16_t>(x + 14), static_cast<int16_t>(y + 10));
+
+    stroke(static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 14),
+           static_cast<int16_t>(x + 9), static_cast<int16_t>(y + 12));
+    stroke(static_cast<int16_t>(x + 9), static_cast<int16_t>(y + 12),
+           static_cast<int16_t>(x + 11), static_cast<int16_t>(y + 14));
+    surface.fillRect(static_cast<int16_t>(x + 8), static_cast<int16_t>(y + 16), 2, 2,
+                     kDashboardBlack);
+}
+
+void drawPrototypeBatteryIcon(IDrawSurface &surface, int16_t x, int16_t y) {
+    surface.drawRect(x, y, 16, 9, kDashboardBlack);
+    surface.fillRect(static_cast<int16_t>(x + 16), static_cast<int16_t>(y + 3), 2, 3,
+                     kDashboardBlack);
+    surface.fillRect(static_cast<int16_t>(x + 3), static_cast<int16_t>(y + 3), 10, 3,
+                     kDashboardAccent);
+}
+
+void drawPrototypePageIcon(IDrawSurface &surface, PageIconKind icon, int16_t x, int16_t y) {
+    switch (icon) {
+        case PageIconKind::Overview:
+            surface.drawRect(x, y, 14, 14, kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 3), static_cast<int16_t>(y + 5),
+                             static_cast<int16_t>(x + 11), static_cast<int16_t>(y + 5),
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 3), static_cast<int16_t>(y + 9),
+                             static_cast<int16_t>(x + 9), static_cast<int16_t>(y + 9),
+                             kDashboardAccent);
+            break;
+        case PageIconKind::Month:
+            surface.drawRect(x, static_cast<int16_t>(y + 1), 15, 13, kDashboardBlack);
+            surface.drawLine(x, static_cast<int16_t>(y + 5), static_cast<int16_t>(x + 14),
+                             static_cast<int16_t>(y + 5), kDashboardBlack);
+            surface.fillRect(static_cast<int16_t>(x + 8), static_cast<int16_t>(y + 8), 4, 4,
+                             kDashboardAccent);
+            break;
+        case PageIconKind::Week:
+            surface.drawLine(static_cast<int16_t>(x + 2), static_cast<int16_t>(y + 13),
+                             static_cast<int16_t>(x + 2), static_cast<int16_t>(y + 2),
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 2), static_cast<int16_t>(y + 2),
+                             static_cast<int16_t>(x + 13), static_cast<int16_t>(y + 2),
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 4), static_cast<int16_t>(y + 11),
+                             static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 8),
+                             kDashboardAccent);
+            surface.drawLine(static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 8),
+                             static_cast<int16_t>(x + 10), static_cast<int16_t>(y + 9),
+                             kDashboardAccent);
+            surface.drawLine(static_cast<int16_t>(x + 10), static_cast<int16_t>(y + 9),
+                             static_cast<int16_t>(x + 13), static_cast<int16_t>(y + 4),
+                             kDashboardAccent);
+            break;
+        case PageIconKind::Clock:
+            surface.drawRect(static_cast<int16_t>(x + 3), y, 9, 15, kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 7),
+                             static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 3),
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 7),
+                             static_cast<int16_t>(x + 11), static_cast<int16_t>(y + 9),
+                             kDashboardAccent);
+            break;
+        case PageIconKind::News:
+            surface.drawRect(x, static_cast<int16_t>(y + 2), 15, 12, kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 3), static_cast<int16_t>(y + 5),
+                             static_cast<int16_t>(x + 12), static_cast<int16_t>(y + 5),
+                             kDashboardAccent);
+            surface.drawLine(static_cast<int16_t>(x + 3), static_cast<int16_t>(y + 9),
+                             static_cast<int16_t>(x + 12), static_cast<int16_t>(y + 9),
+                             kDashboardBlack);
+            break;
+        case PageIconKind::Weather:
+            surface.drawRect(static_cast<int16_t>(x + 1), static_cast<int16_t>(y + 7), 8, 6,
+                             kDashboardAccent);
+            surface.drawLine(static_cast<int16_t>(x + 8), static_cast<int16_t>(y + 7),
+                             static_cast<int16_t>(x + 15), static_cast<int16_t>(y + 7),
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 5), static_cast<int16_t>(y + 13),
+                             static_cast<int16_t>(x + 16), static_cast<int16_t>(y + 13),
+                             kDashboardBlack);
+            break;
+        case PageIconKind::Portfolio:
+            surface.drawRect(static_cast<int16_t>(x + 1), static_cast<int16_t>(y + 4), 14, 10,
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 5), static_cast<int16_t>(y + 4),
+                             static_cast<int16_t>(x + 5), static_cast<int16_t>(y + 1),
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 5), static_cast<int16_t>(y + 1),
+                             static_cast<int16_t>(x + 11), static_cast<int16_t>(y + 1),
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 11), static_cast<int16_t>(y + 1),
+                             static_cast<int16_t>(x + 11), static_cast<int16_t>(y + 4),
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 4), static_cast<int16_t>(y + 10),
+                             static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 7),
+                             kDashboardAccent);
+            surface.drawLine(static_cast<int16_t>(x + 7), static_cast<int16_t>(y + 7),
+                             static_cast<int16_t>(x + 10), static_cast<int16_t>(y + 9),
+                             kDashboardAccent);
+            surface.drawLine(static_cast<int16_t>(x + 10), static_cast<int16_t>(y + 9),
+                             static_cast<int16_t>(x + 13), static_cast<int16_t>(y + 5),
+                             kDashboardAccent);
+            break;
+        case PageIconKind::Economic:
+            surface.drawRect(x, static_cast<int16_t>(y + 2), 15, 12, kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 4), static_cast<int16_t>(y + 11),
+                             static_cast<int16_t>(x + 4), static_cast<int16_t>(y + 7),
+                             kDashboardAccent);
+            surface.drawLine(static_cast<int16_t>(x + 8), static_cast<int16_t>(y + 11),
+                             static_cast<int16_t>(x + 8), static_cast<int16_t>(y + 5),
+                             kDashboardBlack);
+            surface.drawLine(static_cast<int16_t>(x + 12), static_cast<int16_t>(y + 11),
+                             static_cast<int16_t>(x + 12), static_cast<int16_t>(y + 3),
+                             kDashboardBlack);
+            break;
+    }
+}
+
 void drawStatusLine(IDrawSurface &surface, const std::string &statusText) {
     if (statusText.empty()) {
         return;
@@ -137,6 +273,37 @@ std::string fitText(IDrawSurface &surface, const std::string &text,
     return best;
 }
 
+void drawPrototypePageChrome(IDrawSurface &surface, const std::string &title,
+                             PageIconKind icon, size_t pageNumber,
+                             size_t pageCount, const std::string &timeText,
+                             const std::string &ipText,
+                             const std::string &batteryText) {
+    surface.fillScreen(kDashboardWhite);
+    drawPrototypePageIcon(surface, icon, 18, 13);
+
+    const int16_t titleMaxWidth = 224;
+    const uint8_t titleSize = surface.measureText(title, 2) <= titleMaxWidth ? 2 : 1;
+    surface.drawText(42, 18, fitText(surface, title, titleMaxWidth, titleSize),
+                     kDashboardBlack, TextAlign::Left, titleSize);
+
+    drawPrototypeWifiIcon(surface, 282, 8);
+    surface.drawLine(310, 12, 310, 25, kDashboardBlack);
+    drawPrototypeBatteryIcon(surface, 326, 12);
+    surface.drawText(382, 14, fitText(surface, batteryText, 46, 1),
+                     kDashboardBlack, TextAlign::Right, 1);
+    surface.drawText(382, 34, fitText(surface, timeText, 146, 1),
+                     kDashboardBlack, TextAlign::Right, 1);
+
+    surface.drawLine(18, kHeaderRuleY, static_cast<int16_t>(surface.width() - 18), kHeaderRuleY,
+                     kDashboardBlack);
+    surface.drawLine(18, kHeaderAccentY, 92, kHeaderAccentY, kDashboardAccent);
+
+    surface.drawText(18, 286, fitText(surface, ipText, 170, 1),
+                     kDashboardBlack, TextAlign::Left, 1);
+    const std::string pageText = std::to_string(pageNumber) + " | " + std::to_string(pageCount);
+    surface.drawText(382, 286, pageText, kDashboardBlack, TextAlign::Right, 1);
+}
+
 void drawPageHeader(IDrawSurface &surface, const std::string &title,
                     const std::string &rightText, const std::string &statusText,
                     int16_t accentWidth) {
@@ -178,7 +345,7 @@ void drawList(IDrawSurface &surface, const Rect &rect, const std::string &title,
               const std::vector<std::string> &items, bool accentTitle) {
     fill(surface, rect, kDashboardWhite);
     box(surface, rect, kDashboardBlack);
-    surface.drawText(static_cast<int16_t>(rect.x + 6), static_cast<int16_t>(rect.y + 14),
+    surface.drawText(static_cast<int16_t>(rect.x + 6), static_cast<int16_t>(rect.y + 10),
                      title, accentTitle ? kDashboardAccent : kDashboardBlack,
                      TextAlign::Left, 1);
     surface.drawLine(static_cast<int16_t>(rect.x + 4), static_cast<int16_t>(rect.y + 20),
@@ -194,7 +361,7 @@ void drawList(IDrawSurface &surface, const Rect &rect, const std::string &title,
                          static_cast<int16_t>(rect.w - 8), std::min<int16_t>(rowH, 18),
                          kDashboardWhite);
         drawListMarker(surface, static_cast<int16_t>(rect.x + 8), y);
-        surface.drawText(static_cast<int16_t>(rect.x + 26), y,
+        surface.drawText(static_cast<int16_t>(rect.x + 8 + 15), y - 4,
                          fitText(surface, item, static_cast<int16_t>(rect.w - 34), 1),
                          kDashboardBlack,
                          TextAlign::Left, 1);

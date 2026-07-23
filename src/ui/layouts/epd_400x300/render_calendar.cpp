@@ -6,34 +6,6 @@
 #include "ui/components/calm_grid.h"
 
 namespace {
-void drawCalendarHeader(IDrawSurface &surface, const std::string &title, const std::string &rightText) {
-    calm_grid::drawPageHeader(surface, title, rightText, "", 74);
-}
-
-void drawCalendarFooter(IDrawSurface &surface, const std::string &leftText, const std::string &rightText) {
-    surface.drawText(18, 286, leftText, kDashboardAccent, TextAlign::Left, 1);
-    surface.drawText(392, 286, rightText, kDashboardBlack, TextAlign::Right, 1);
-}
-
-std::string calendarMonthTitle(const CalendarDayCell &cell) {
-    if (cell.detail.empty()) {
-        return cell.text;
-    }
-    return cell.text;
-}
-
-void drawCalendarMonthCell(IDrawSurface &surface, const Rect &cell, const CalendarDayCell &day) {
-    surface.drawRect(cell.x, cell.y, cell.w, cell.h, day.today ? kDashboardAccent : kDashboardBlack);
-    surface.drawText(static_cast<int16_t>(cell.x + 4), static_cast<int16_t>(cell.y + 11),
-                     calendarMonthTitle(day), day.today || day.accent ? kDashboardAccent : kDashboardBlack,
-                     TextAlign::Left, 1);
-    if (!day.detail.empty()) {
-        surface.drawText(static_cast<int16_t>(cell.x + 4), static_cast<int16_t>(cell.y + 27),
-                         calm_grid::fitText(surface, day.detail, static_cast<int16_t>(cell.w - 8), 1),
-                         kDashboardBlack, TextAlign::Left, 1);
-    }
-}
-
 std::array<std::pair<const char *, int>, 7> calendarWeeklyLabels() {
     return {{{"MON", 20}, {"TUE", 21}, {"WED", 22}, {"THU", 23}, {"FRI", 24}, {"SAT", 25}, {"SUN", 26}}};
 }
@@ -64,7 +36,7 @@ void drawCalendarWeekHeader(IDrawSurface &surface, int16_t x, int16_t y, int16_t
 
 void drawTimelineEventCard(IDrawSurface &surface, const Rect &rect, const CalendarEventLine &item) {
     surface.drawRect(rect.x, rect.y, rect.w, rect.h, item.accent ? kDashboardAccent : kDashboardBlack);
-    surface.drawText(static_cast<int16_t>(rect.x + 4), static_cast<int16_t>(rect.y + 11),
+    surface.drawText(static_cast<int16_t>(rect.x + 4), static_cast<int16_t>(rect.y + 6),
                      item.time, item.accent ? kDashboardAccent : kDashboardBlack,
                      TextAlign::Left, 1);
     surface.drawLine(static_cast<int16_t>(rect.x + 4), static_cast<int16_t>(rect.y + 15),
@@ -74,48 +46,83 @@ void drawTimelineEventCard(IDrawSurface &surface, const Rect &rect, const Calend
                      calm_grid::fitText(surface, item.title, static_cast<int16_t>(rect.w - 8), 1),
                      kDashboardBlack, TextAlign::Left, 1);
 }
+
+void drawMonthEventCard(IDrawSurface &surface, const Rect &rect, const char *day,
+                        const char *dow, const char *time, const char *title,
+                        const char *detail, bool accent) {
+    surface.drawRect(rect.x, rect.y, rect.w, rect.h, accent ? kDashboardAccent : kDashboardBlack);
+    surface.drawText(static_cast<int16_t>(rect.x + 10), static_cast<int16_t>(rect.y + 6),
+                     day, accent ? kDashboardAccent : kDashboardBlack, TextAlign::Left, 2);
+    surface.drawText(static_cast<int16_t>(rect.x + 48), static_cast<int16_t>(rect.y + 6),
+                     dow, kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(static_cast<int16_t>(rect.x + 48), static_cast<int16_t>(rect.y + 18),
+                     time, kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(static_cast<int16_t>(rect.x + 93), static_cast<int16_t>(rect.y + 6),
+                     calm_grid::fitText(surface, title, static_cast<int16_t>(rect.w - 95), 1),
+                     kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(static_cast<int16_t>(rect.x + 93), static_cast<int16_t>(rect.y + 18),
+                     calm_grid::fitText(surface, detail, static_cast<int16_t>(rect.w - 95), 1),
+                     kDashboardBlack, TextAlign::Left, 1);
+}
 }  // namespace
 
-void renderMonthlyOverviewPage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot) {
+void renderMonthlyOverviewPage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot,
+                               size_t pageNumber, size_t pageCount) {
     (void)snapshot;
-    drawCalendarHeader(surface, "JULY 2026", "2/12");
+    calm_grid::drawPrototypePageChrome(surface, "MONTHLY OVERVIEW",
+                                       calm_grid::PageIconKind::Month, pageNumber, pageCount);
 
     const int16_t gridX = 18;
-    const int16_t gridY = 74;
     const int16_t cellW = 52;
-    const int16_t cellH = 40;
-
-    drawCalendarMonthWeekHeader(surface, gridX, 61, cellW);
-    surface.drawLine(gridX, 70, static_cast<int16_t>(gridX + cellW * 7), 70, kDashboardBlack);
-
-    for (int row = 0; row < 5; ++row) {
-        for (int col = 0; col < 7; ++col) {
-            const int idx = row * 7 + col;
-            if (idx >= static_cast<int>(snapshot.monthCells.size())) {
-                continue;
-            }
-            const Rect cell{static_cast<int16_t>(gridX + col * cellW),
-                            static_cast<int16_t>(gridY + row * cellH),
-                            cellW, cellH};
-            drawCalendarMonthCell(surface, cell, snapshot.monthCells[idx]);
-        }
+    // surface.drawText(18, 66, "JULY 2026", kDashboardBlack, TextAlign::Left, 2);
+    surface.drawText(18, 60, "JULY 2026", kDashboardBlack, TextAlign::Left, 2);
+    drawCalendarMonthWeekHeader(surface, gridX, 86, cellW);
+    // TODO: change to dynamic dates based on the real calendar date; the active day should be highlighted in accent color
+    const std::array<const char *, 7> dates = {{"20", "21", "22", "23", "24", "25", "26"}};
+    for (size_t i = 0; i < dates.size(); ++i) {
+        const int16_t cx = static_cast<int16_t>(gridX + static_cast<int16_t>(i) * cellW + cellW / 2);
+        const bool active = i == 2;
+        surface.drawText(cx, 100, dates[i], active ? kDashboardAccent : kDashboardBlack,
+                         TextAlign::Center, 1);
     }
+    surface.drawLine(gridX, 110, static_cast<int16_t>(gridX + cellW * 7), 116, kDashboardBlack);
+    // TODO: change to dynamic events based on the real calendar date; the active day should be highlighted in accent color
+    drawMonthEventCard(surface, Rect{18, 120, 176, 30}, "04", "SAT", "09:00",
+                       "Holiday", "Family calendar", false);
+    drawMonthEventCard(surface, Rect{206, 120, 176, 30}, "08", "WED", "10:30",
+                       "Dentist", "Downtown clinic", false);
+    drawMonthEventCard(surface, Rect{18, 158, 176, 30}, "10", "FRI", "14:00",
+                       "Q3 Rev", "Finance deck", false);
+    drawMonthEventCard(surface, Rect{206, 158, 176, 30}, "17", "FRI", "17:30",
+                       "Deadline", "Prototype freeze", false);
+    drawMonthEventCard(surface, Rect{18, 196, 176, 30}, "20", "MON", "09:00",
+                       "Review", "Task 14 UI", false);
+    drawMonthEventCard(surface, Rect{206, 196, 176, 30}, "22", "WED", "18:30",
+                       "Birthday", "Dinner reservation", true);
+    drawMonthEventCard(surface, Rect{18, 234, 176, 30}, "25", "SAT", "16:00",
+                       "Soccer", "Community field", false);
+    drawMonthEventCard(surface, Rect{206, 234, 176, 30}, "28", "TUE", "11:00",
+                       "Atlas", "Project sync", false);
 }
 
-void renderWeeklyTimelinePage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot) {
-    drawCalendarHeader(surface, "WEEKLY TIMELINE", "JUL 20-26 2026   3/12");
+void renderWeeklyTimelinePage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot,
+                              size_t pageNumber, size_t pageCount) {
+    calm_grid::drawPrototypePageChrome(surface, "WEEKLY TIMELINE",
+                                       calm_grid::PageIconKind::Week, pageNumber, pageCount);
 
     const int16_t gridX = 18;
     const int16_t cellW = 52;
     const int16_t gridBottom = 256;
-    const int activeDayIndex = 0;
+    const int activeDayIndex = 2;
 
-    drawCalendarWeekHeader(surface, gridX, 58, cellW, activeDayIndex);
+    // surface.drawText(18, 66, "JUL 20-26 2026", kDashboardBlack, TextAlign::Left, 1);
+    // drawCalendarWeekHeader(surface, gridX, 92, cellW, activeDayIndex);
+    drawCalendarWeekHeader(surface, gridX, 62, cellW, activeDayIndex);
     for (int i = 0; i <= 7; ++i) {
         const int16_t x = static_cast<int16_t>(gridX + i * cellW);
-        surface.drawLine(x, 82, x, gridBottom, kDashboardBlack);
+        surface.drawLine(x, 88, x, gridBottom, kDashboardBlack);
     }
-    surface.drawLine(gridX, 82, static_cast<int16_t>(gridX + 7 * cellW), 82, kDashboardBlack);
+    surface.drawLine(gridX, 88, static_cast<int16_t>(gridX + 7 * cellW), 88, kDashboardBlack);
 
     std::array<int, 7> slotCounts{};
     for (const auto &item : snapshot.timelineItems) {
@@ -127,10 +134,10 @@ void renderWeeklyTimelinePage(IDrawSurface &surface, const CalendarPageSnapshot 
             continue;
         }
         const int16_t x = static_cast<int16_t>(gridX + item.dayIndex * cellW);
-        const int16_t y = static_cast<int16_t>(90 + slot * 36);
-        const Rect box{static_cast<int16_t>(x + 3), y, 46, 30};
+        const int16_t y = static_cast<int16_t>(98 + slot * 58);
+        const Rect box{static_cast<int16_t>(x + 4), y, 44, 48};
         drawTimelineEventCard(surface, box, item);
     }
-
-    drawCalendarFooter(surface, "NEXT 09:00 - Design review", "Updated 08:42");
+    // TODO: change this to a dynamic calculation based on the number of events in the timeline
+    surface.drawText(18, 270, "NEXT 09:00 - Design review", kDashboardAccent, TextAlign::Left, 1);
 }

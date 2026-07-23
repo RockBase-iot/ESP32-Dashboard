@@ -8,17 +8,13 @@
 #include "ui/components/calm_grid.h"
 
 namespace {
-void drawFinanceHeader(IDrawSurface &surface, const std::string &title, const std::string &rightText) {
-    calm_grid::drawPageHeader(surface, title, rightText, "", 74);
-}
-
 void drawFinanceComplianceFooter(IDrawSurface &surface, const FinancePageSnapshot &snapshot) {
-    surface.drawText(18, 270, "Delayed", kDashboardAccent, TextAlign::Left, 1);
-    surface.drawText(82, 270, "Source", kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(146, 270, "Updated", kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(382, 270, calm_grid::fitText(surface, snapshot.updatedText, 92, 1),
+    surface.drawText(18, 258, "Delayed", kDashboardAccent, TextAlign::Left, 1);
+    surface.drawText(82, 258, "Source", kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(146, 258, "Updated", kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(382, 258, calm_grid::fitText(surface, snapshot.updatedText, 92, 1),
                      kDashboardBlack, TextAlign::Right, 1);
-    surface.drawText(18, 286, "Not investment advice", kDashboardBlack, TextAlign::Left, 1);
+    surface.drawText(18, 272, "Not investment advice", kDashboardBlack, TextAlign::Left, 1);
 }
 
 std::string moneyText(float value) {
@@ -37,7 +33,7 @@ void drawQuoteRow(IDrawSurface &surface, const Rect &rect, const FinanceQuote &q
     surface.drawLine(rect.x, static_cast<int16_t>(rect.y + rect.h - 1),
                      static_cast<int16_t>(rect.x + rect.w), static_cast<int16_t>(rect.y + rect.h - 1),
                      kDashboardBlack);
-    surface.drawText(static_cast<int16_t>(rect.x + 4), static_cast<int16_t>(rect.y + 18),
+    surface.drawText(static_cast<int16_t>(rect.x + 4), static_cast<int16_t>(rect.y + 14),
                      quote.ticker, kDashboardBlack, TextAlign::Left, 2);
     surface.drawText(static_cast<int16_t>(rect.x + 148), static_cast<int16_t>(rect.y + 18),
                      moneyText(quote.price), kDashboardBlack, TextAlign::Right, 1);
@@ -53,14 +49,14 @@ void drawEventRow(IDrawSurface &surface, const Rect &rect, const EconomicEvent &
     surface.drawLine(rect.x, static_cast<int16_t>(rect.y + rect.h - 1),
                      static_cast<int16_t>(rect.x + rect.w), static_cast<int16_t>(rect.y + rect.h - 1),
                      kDashboardBlack);
-    surface.drawText(static_cast<int16_t>(rect.x + 4), static_cast<int16_t>(rect.y + 18),
+    surface.drawText(static_cast<int16_t>(rect.x + 4), static_cast<int16_t>(rect.y + 4),
                      event.region, kDashboardAccent, TextAlign::Left, 2);
-    surface.drawText(static_cast<int16_t>(rect.x + 54), static_cast<int16_t>(rect.y + 14),
+    surface.drawText(static_cast<int16_t>(rect.x + 54), static_cast<int16_t>(rect.y + 4),
                      calm_grid::fitText(surface, event.name, 190, 1),
                      kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(static_cast<int16_t>(rect.x + rect.w - 4), static_cast<int16_t>(rect.y + 14),
+    surface.drawText(static_cast<int16_t>(rect.x + rect.w - 4), static_cast<int16_t>(rect.y + 4),
                      financeImpactLabel(event.impact), kDashboardBlack, TextAlign::Right, 1);
-    surface.drawText(static_cast<int16_t>(rect.x + 54), static_cast<int16_t>(rect.y + 28),
+    surface.drawText(static_cast<int16_t>(rect.x + 54), static_cast<int16_t>(rect.y + 14),
                      calm_grid::fitText(surface, event.source, 190, 1),
                      kDashboardBlack, TextAlign::Left, 1);
 }
@@ -76,6 +72,7 @@ FinancePageSnapshot sampleFinancePageSnapshot() {
         {"AAPL.US", 213.50f, 3.40f, 1.62f, "USD", 1784559300LL, true, "Stooq"},
         {"MSFT.US", 510.25f, -1.70f, -0.33f, "USD", 1784559300LL, true, "Stooq"},
         {"BTCUSD", 118240.0f, 240.0f, 0.20f, "USD", 1784559300LL, true, "Custom"},
+        {"BTCUSD", 118240.0f, 240.0f, 0.20f, "USD", 1784559300LL, true, "Custom"}
     };
 
     FinancePageSnapshot snapshot;
@@ -90,10 +87,12 @@ FinancePageSnapshot sampleFinancePageSnapshot() {
     return snapshot;
 }
 
-void renderStockInfoPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot) {
-    drawFinanceHeader(surface, "STOCK INFO", "FINANCE   10/12");
-    const std::array<Rect, 4> rows = {{{18, 58, 364, 42}, {18, 100, 364, 42},
-                                       {18, 142, 364, 42}, {18, 184, 364, 42}}};
+void renderStockInfoPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot,
+                         size_t pageNumber, size_t pageCount) {
+    calm_grid::drawPrototypePageChrome(surface, "STOCK INFO",
+                                       calm_grid::PageIconKind::Portfolio, pageNumber, pageCount);
+    const std::array<Rect, 4> rows = {{{18, 44, 364, 34}, {18, 86, 364, 34},
+                                       {18, 128, 364, 34}, {18, 170, 364, 34}}};
     const size_t count = std::min<size_t>(rows.size(), snapshot.quotes.size());
     for (size_t i = 0; i < count; ++i) {
         drawQuoteRow(surface, rows[i], snapshot.quotes[i]);
@@ -101,34 +100,44 @@ void renderStockInfoPage(IDrawSurface &surface, const FinancePageSnapshot &snaps
     drawFinanceComplianceFooter(surface, snapshot);
 }
 
-void renderPortfolioSummaryPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot) {
-    drawFinanceHeader(surface, "PORTFOLIO", "LOCAL ONLY   11/12");
-    surface.drawRect(18, 62, 364, 76, kDashboardBlack);
-    surface.drawText(28, 86, "Market value", kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(28, 120, moneyText(snapshot.portfolio.marketValue), kDashboardAccent,
+void renderPortfolioSummaryPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot,
+                                size_t pageNumber, size_t pageCount) {
+    calm_grid::drawPrototypePageChrome(surface, "PORTFOLIO",
+                                       calm_grid::PageIconKind::Portfolio, pageNumber, pageCount);
+    surface.drawRect(18, 62, 364, 64, kDashboardBlack);
+    surface.drawText(26, 74, "PORTFOLIO SUMMARY", kDashboardAccent, TextAlign::Left, 1);
+    surface.drawLine(26, 86, 374, 86, kDashboardBlack);
+    surface.drawText(28, 96, moneyText(snapshot.portfolio.marketValue), kDashboardBlack,
                      TextAlign::Left, 3);
-    surface.drawText(226, 86, "Gain/Loss", kDashboardBlack, TextAlign::Left, 1);
-    surface.drawText(226, 120, percentText(snapshot.portfolio.gainLossPercent), kDashboardBlack,
+    surface.drawText(246, 94, percentText(snapshot.portfolio.gainLossPercent), kDashboardAccent,
                      TextAlign::Left, 2);
+    surface.drawText(246, 112, "Today", kDashboardBlack, TextAlign::Left, 1);
 
-    surface.drawText(18, 164, "TOP MOVERS", kDashboardBlack, TextAlign::Left, 1);
+    surface.drawRect(18, 142, 364, 100, kDashboardBlack);
+    surface.drawText(26, 154, "TOP MOVERS", kDashboardAccent, TextAlign::Left, 1);
+    surface.drawLine(26, 166, 374, 166, kDashboardBlack);
     const size_t count = std::min<size_t>(3, snapshot.portfolio.topMovers.size());
     for (size_t i = 0; i < count; ++i) {
         const PortfolioHolding &holding = snapshot.portfolio.topMovers[i];
-        const int16_t y = static_cast<int16_t>(188 + 20 * static_cast<int16_t>(i));
+        const int16_t y = static_cast<int16_t>(176 + 20 * static_cast<int16_t>(i));
         surface.drawText(28, y, holding.ticker, kDashboardBlack, TextAlign::Left, 1);
-        surface.drawText(170, y, moneyText(holding.marketValue), kDashboardBlack, TextAlign::Right, 1);
-        surface.drawText(274, y, percentText(holding.gainLossPercent),
+        surface.drawText(198, y, moneyText(holding.marketValue), kDashboardBlack, TextAlign::Right, 1);
+        surface.drawText(340, y, percentText(holding.gainLossPercent),
                          holding.gainLossPercent >= 0.0f ? kDashboardAccent : kDashboardBlack,
                          TextAlign::Right, 1);
     }
     drawFinanceComplianceFooter(surface, snapshot);
 }
 
-void renderEconomicCalendarPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot) {
-    drawFinanceHeader(surface, "ECONOMIC CALENDAR", "RSS/ICS   12/12");
-    const std::array<Rect, 4> rows = {{{18, 58, 364, 42}, {18, 100, 364, 42},
-                                       {18, 142, 364, 42}, {18, 184, 364, 42}}};
+void renderEconomicCalendarPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot,
+                                size_t pageNumber, size_t pageCount) {
+    calm_grid::drawPrototypePageChrome(surface, "ECONOMIC CALENDAR",
+                                       calm_grid::PageIconKind::Economic, pageNumber, pageCount);
+    surface.drawRect(18, 62, 364, 176, kDashboardBlack);
+    surface.drawText(26, 74, "ECONOMIC CALENDAR", kDashboardAccent, TextAlign::Left, 1);
+    surface.drawLine(26, 86, 374, 86, kDashboardBlack);
+    const std::array<Rect, 4> rows = {{{26, 96, 348, 30}, {26, 132, 348, 30},
+                                       {26, 168, 348, 30}, {26, 204, 348, 30}}};
     const size_t count = std::min<size_t>(rows.size(), snapshot.events.size());
     for (size_t i = 0; i < count; ++i) {
         drawEventRow(surface, rows[i], snapshot.events[i]);

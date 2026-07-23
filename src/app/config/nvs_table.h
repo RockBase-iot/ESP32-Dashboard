@@ -50,7 +50,7 @@
 #define DEFAULT_TIME_FORMAT      "%H:%M"
 #define DEFAULT_DATE_FORMAT      "%a, %B %e"
 #define DEFAULT_LANGUAGE         "zh_CN"
-#define DEFAULT_CONFIG_VERSION   2
+#define DEFAULT_CONFIG_VERSION   4
 #define DEFAULT_PAGE_TEMPLATE    0
 #define DEFAULT_ROTATE_MINUTES   0
 #define DEFAULT_PORTAL_WINDOW_SEC 30      // power-on config window; 0 = disabled

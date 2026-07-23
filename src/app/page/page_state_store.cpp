@@ -32,6 +32,13 @@ PageId sanitizeStoredPageId(int32_t rawPageId, const PageSettings &settings) {
     return page;
 }
 
+PageId selectStartupPage(PageId persistedPage, const PageSettings &settings, bool restorePersistedPage) {
+    if (!restorePersistedPage) {
+        return fallbackPage(settings);
+    }
+    return sanitizeStoredPageId(static_cast<int32_t>(persistedPage), settings);
+}
+
 PageId loadPersistedCurrentPage(const PageSettings &settings) {
     Settings store(NVS_NAMESPACE_WEATHER, false);
     const int32_t rawPageId = store.GetI32(NVS_KEY_CURRENT_PAGE, kNoStoredPage);

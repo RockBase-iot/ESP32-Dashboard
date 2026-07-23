@@ -42,7 +42,7 @@ struct WeatherDaily {
 
 struct WeatherData {
     WeatherCurrent             current;
-    std::vector<WeatherHourly> hourly;  // next 12 h
+    std::vector<WeatherHourly> hourly;  // first 24 h of the local forecast day
     std::vector<WeatherDaily>  daily;   // next 4 days (including today)
     String                     timezone;
     float                      elevation      = NAN; // metres above sea level (from 90m DEM)

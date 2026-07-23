@@ -226,11 +226,7 @@ else:
                     env.Action(build_littlefs, '[EPD/FS] Building LittleFS image...'),
                 )
 
-                # Tell esptool to flash littlefs.bin at the partition offset
-                env.Append(
-                    UPLOADERFLAGS=[
-                        '0x%X' % fs_start,
-                        fs_bin,
-                    ]
-                )
-                _log(f'[EPD/FS] littlefs.bin will be flashed at 0x{fs_start:X} on upload\n')
+                # NOTE: Do NOT append '0x..<offset> <fs_bin>' to UPLOADERFLAGS here.
+                # PlatformIO's own uploadfs already computes the FS offset from the
+                # partition CSV and appends its own <address> <image> pair; an extra
+                # pair shifts esptool's address/file pairing and breaks uploadfs.

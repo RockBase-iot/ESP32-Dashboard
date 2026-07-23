@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h>
+
 #include <array>
 #include <string>
 #include <vector>
@@ -34,4 +36,5 @@ struct CalendarPageSnapshot {
 };
 
 CalendarPageSnapshot sampleCalendarPageSnapshot();
-void renderOverviewPage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot);
+void renderOverviewPage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot,
+                        size_t pageNumber = 1, size_t pageCount = 8);

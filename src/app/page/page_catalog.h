@@ -50,7 +50,7 @@ struct PageDescriptor {
 };
 
 constexpr uint8_t kPageCount = 16;
-constexpr uint32_t kDashboardConfigVersion = 2;
+constexpr uint32_t kDashboardConfigVersion = 4;
 
 bool isValidPageId(PageId id);
 uint32_t pageMask(PageId id);

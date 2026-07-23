@@ -120,15 +120,17 @@ void loadAppConfig(AppConfig &cfg) {
     }
 
     PageSettings rawPageSettings = pageDefaults;
-    rawPageSettings.configVersion = cfg.configVersion;
-    rawPageSettings.enabledMask = cfg.pageEnabledMask;
-    rawPageSettings.autoRotateMask = cfg.pageAutoRotateMask;
-    rawPageSettings.orderCount = cfg.pageOrderCount;
-    for (size_t i = 0; i < rawPageSettings.orderCount && i < rawPageSettings.order.size(); ++i) {
-        rawPageSettings.order[i] = static_cast<PageId>(cfg.pageOrder[i]);
+    if (cfg.configVersion == kDashboardConfigVersion) {
+        rawPageSettings.configVersion = cfg.configVersion;
+        rawPageSettings.enabledMask = cfg.pageEnabledMask;
+        rawPageSettings.autoRotateMask = cfg.pageAutoRotateMask;
+        rawPageSettings.orderCount = cfg.pageOrderCount;
+        for (size_t i = 0; i < rawPageSettings.orderCount && i < rawPageSettings.order.size(); ++i) {
+            rawPageSettings.order[i] = static_cast<PageId>(cfg.pageOrder[i]);
+        }
+        rawPageSettings.templateId = static_cast<PageTemplateId>(cfg.pageTemplateId);
+        rawPageSettings.rotationIntervalMinutes = cfg.rotationIntervalMinutes;
     }
-    rawPageSettings.templateId = static_cast<PageTemplateId>(cfg.pageTemplateId);
-    rawPageSettings.rotationIntervalMinutes = cfg.rotationIntervalMinutes;
     rawPageSettings.timeZoneId = cfg.timeZoneId.c_str();
     copyPageSettingsToConfig(cfg, sanitizePageSettings(rawPageSettings));
 }

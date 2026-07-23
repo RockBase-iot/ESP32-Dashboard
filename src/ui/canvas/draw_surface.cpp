@@ -16,6 +16,9 @@ void MemoryDrawSurface::touchPixel(int16_t x, int16_t y, uint16_t color) {
     if (x < 0 || y < 0 || x >= _width || y >= _height) {
         ++_outOfBounds;
     }
+    if (color == kDashboardAccent && x >= 8 && x <= 28 && y >= 8 && y <= 30) {
+        ++_accentTopLeftIconPixels;
+    }
 }
 
 void MemoryDrawSurface::drawPixel(int16_t x, int16_t y, uint16_t color) {

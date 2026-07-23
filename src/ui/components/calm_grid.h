@@ -14,8 +14,25 @@ struct LabelValue {
     bool accent = false;
 };
 
+enum class PageIconKind : uint8_t {
+    Overview,
+    Month,
+    Week,
+    Clock,
+    News,
+    Weather,
+    Portfolio,
+    Economic,
+};
+
 std::string fitText(IDrawSurface &surface, const std::string &text,
                     int16_t maxWidth, uint8_t size = 1);
+void drawPrototypePageChrome(IDrawSurface &surface, const std::string &title,
+                             PageIconKind icon, size_t pageNumber,
+                             size_t pageCount,
+                             const std::string &timeText = "WED 14:32 JUL 22, 2026",
+                             const std::string &ipText = "IP: 192.168.1.42",
+                             const std::string &batteryText = "82%");
 void drawPageHeader(IDrawSurface &surface, const std::string &title,
                     const std::string &rightText,
                     const std::string &statusText = "",

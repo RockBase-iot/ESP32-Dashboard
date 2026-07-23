@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h>
+
 #include <string>
 #include <vector>
 
@@ -14,6 +16,9 @@ struct FinancePageSnapshot {
 };
 
 FinancePageSnapshot sampleFinancePageSnapshot();
-void renderStockInfoPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot);
-void renderPortfolioSummaryPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot);
-void renderEconomicCalendarPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot);
+void renderStockInfoPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot,
+                         size_t pageNumber = 7, size_t pageCount = 8);
+void renderPortfolioSummaryPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot,
+                                size_t pageNumber = 7, size_t pageCount = 8);
+void renderEconomicCalendarPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot,
+                                size_t pageNumber = 8, size_t pageCount = 8);

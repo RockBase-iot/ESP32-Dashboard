@@ -36,6 +36,7 @@ void GfxSurface::drawText(int16_t x, int16_t y, const std::string &text, uint16_
                           TextAlign align, uint8_t size) {
     _gfx.setFont();
     _gfx.setTextSize(size);
+    _gfx.setTextWrap(false);
     int16_t x1 = 0;
     int16_t y1 = 0;
     uint16_t w = 0;
@@ -55,6 +56,7 @@ void GfxSurface::drawText(int16_t x, int16_t y, const std::string &text, uint16_
 int16_t GfxSurface::measureText(const std::string &text, uint8_t size) const {
     const_cast<Adafruit_GFX &>(_gfx).setFont();
     const_cast<Adafruit_GFX &>(_gfx).setTextSize(size);
+    const_cast<Adafruit_GFX &>(_gfx).setTextWrap(false);
     int16_t x1 = 0;
     int16_t y1 = 0;
     uint16_t w = 0;

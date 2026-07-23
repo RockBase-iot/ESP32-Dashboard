@@ -18,7 +18,7 @@ bool WeatherClass::fetchWeather(double lat, double lon) {
                   "weather_code,is_day,visibility"
         "&hourly=temperature_2m,weather_code,precipitation_probability,relative_humidity_2m"
         "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max"
-        "&forecast_days=5&forecast_hours=24&timezone=auto",
+        "&forecast_days=5&timezone=auto",
         lat, lon);
 
     HTTPClient http;

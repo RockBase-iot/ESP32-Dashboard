@@ -23,6 +23,10 @@
 #include "app/locale/locale_mgr.h"
 #include "utils/logger.h"
 #include <WiFi.h>
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <cstdio>
 #include <esp_attr.h>
 #include <esp_sleep.h>
 #include <esp_mac.h>
@@ -34,6 +38,7 @@ static const char *TAG = "DashboardApp";
 RTC_DATA_ATTR uint8_t DashboardApp::_failCount = 0;
 RTC_DATA_ATTR bool    DashboardApp::_coldBoot  = true;
 RTC_DATA_ATTR bool    DashboardApp::_apMode    = false;
+RTC_DATA_ATTR bool    DashboardApp::_restorePersistedPage = false;
 RTC_DATA_ATTR ButtonAction DashboardApp::_lastButtonAction = ButtonAction::None;
 
 namespace {
@@ -73,6 +78,197 @@ uint32_t scaledFloatHash(float value, float scale) {
     return static_cast<uint32_t>(static_cast<int32_t>(value * scale));
 }
 
+#if defined(UI_LAYOUT_EPD_400x300)
+std::string asciiUpper(std::string value) {
+    for (char &ch : value) {
+        ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    }
+    return value;
+}
+
+std::string trimAsciiCopy(const std::string &value) {
+    size_t begin = 0;
+    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
+        ++begin;
+    }
+    size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return value.substr(begin, end - begin);
+}
+
+struct WeatherLocationParts {
+    std::string city;
+    std::string region;
+    std::string country;
+};
+
+WeatherLocationParts splitWeatherLocation(const String &value) {
+    WeatherLocationParts parts;
+    std::string raw = asciiUpper(value.c_str());
+    raw = trimAsciiCopy(raw);
+    if (raw.empty()) {
+        return parts;
+    }
+
+    const size_t firstComma = raw.find(',');
+    if (firstComma == std::string::npos) {
+        parts.city = raw;
+        return parts;
+    }
+
+    parts.city = trimAsciiCopy(raw.substr(0, firstComma));
+    const size_t secondComma = raw.find(',', firstComma + 1);
+    if (secondComma == std::string::npos) {
+        parts.region = trimAsciiCopy(raw.substr(firstComma + 1));
+        return parts;
+    }
+
+    parts.region = trimAsciiCopy(raw.substr(firstComma + 1, secondComma - firstComma - 1));
+    parts.country = trimAsciiCopy(raw.substr(secondComma + 1));
+    return parts;
+}
+
+std::string weatherConditionFromCode(int code, bool isDay) {
+    if (code == 0) return isDay ? "Sunny" : "Clear";
+    if (code == 1) return isDay ? "Mostly Sunny" : "Mostly Clear";
+    if (code == 2) return "Partly Cloudy";
+    if (code == 3) return "Cloudy";
+    if (code == 45 || code == 48) return "Fog";
+    if (code >= 51 && code <= 57) return "Drizzle";
+    if (code >= 61 && code <= 67) return "Rain";
+    if (code >= 71 && code <= 77) return "Snow";
+    if (code >= 80 && code <= 82) return "Showers";
+    if (code >= 95) return "Storm";
+    return "Weather";
+}
+
+std::string formatIsoDateLabel(const String &isoDate, const char *format) {
+    int year = 0, month = 0, day = 0;
+    if (std::sscanf(isoDate.c_str(), "%d-%d-%d", &year, &month, &day) != 3) {
+        return isoDate.c_str();
+    }
+    tm value = {};
+    value.tm_year = year - 1900;
+    value.tm_mon = month - 1;
+    value.tm_mday = day;
+    value.tm_isdst = -1;
+    if (mktime(&value) == static_cast<time_t>(-1)) {
+        return isoDate.c_str();
+    }
+    char buffer[32] = {};
+    strftime(buffer, sizeof(buffer), format, &value);
+    return asciiUpper(buffer);
+}
+
+std::string isoHourLabel(const String &isoDateTime) {
+    const int tPos = isoDateTime.indexOf('T');
+    if (tPos >= 0 && isoDateTime.length() >= static_cast<size_t>(tPos + 3)) {
+        return isoDateTime.substring(tPos + 1, tPos + 3).c_str();
+    }
+    if (isoDateTime.length() >= 2) {
+        return isoDateTime.substring(0, 2).c_str();
+    }
+    return isoDateTime.c_str();
+}
+
+int isoHourValue(const String &isoDateTime) {
+    const std::string label = isoHourLabel(isoDateTime);
+    if (label.size() < 2 || label[0] < '0' || label[0] > '9' ||
+        label[1] < '0' || label[1] > '9') {
+        return -1;
+    }
+    return (label[0] - '0') * 10 + (label[1] - '0');
+}
+
+bool isoDateMatches(const String &isoDateTime, const String &date) {
+    return date.length() > 0 && isoDateTime.startsWith(date);
+}
+
+float toDisplayWindKph(float kph, const AppConfig &cfg) {
+    if (cfg.unitsSpeed == "ms") return kph / 3.6f;
+    if (cfg.unitsSpeed == "mph") return kph * 0.621371f;
+    if (cfg.unitsSpeed == "kn") return kph * 0.539957f;
+    return kph;
+}
+
+float toDisplayPressureHpa(float hpa, const AppConfig &cfg) {
+    if (cfg.unitsPres == "inHg") return hpa * 0.02953f;
+    if (cfg.unitsPres == "mmHg") return hpa * 0.750062f;
+    return hpa;
+}
+
+float toDisplayDistanceKm(float km, const AppConfig &cfg) {
+    if (cfg.unitsDist == "mi") return km * 0.621371f;
+    return km;
+}
+
+WeatherPageSnapshot buildWeatherPageSnapshot(const WeatherClass &weather, const AppConfig &cfg) {
+    if (!weather.weather().valid) {
+        return sampleWeatherPageSnapshot();
+    }
+
+    const WeatherData &data = weather.weather();
+    WeatherPageSnapshot snapshot;
+    const WeatherLocationParts location = splitWeatherLocation(cfg.city);
+    snapshot.city = location.city.empty() ? "WEATHER" : location.city;
+    snapshot.region = location.region;
+    snapshot.country = location.country;
+    snapshot.updated = "Updated";
+    snapshot.currentCondition = weatherConditionFromCode(data.current.weather_code, data.current.is_day);
+    snapshot.tempUnit = cfg.unitsTemp == "F" ? "F" : "C";
+    snapshot.currentTempC = static_cast<int>(std::round(data.current.temperature));
+    snapshot.feelsLikeC = static_cast<int>(std::round(data.current.apparent_temperature));
+    snapshot.humidityPct = static_cast<int>(std::round(data.current.humidity));
+    snapshot.windKph = static_cast<int>(std::round(toDisplayWindKph(data.current.wind_speed, cfg)));
+    snapshot.rainPct = 0;
+    snapshot.pressureHpa = static_cast<int>(std::round(toDisplayPressureHpa(data.current.pressure, cfg)));
+    snapshot.visibilityKm = static_cast<int>(std::round(toDisplayDistanceKm(data.current.visibility / 1000.0f, cfg)));
+    snapshot.indoorTempC = snapshot.currentTempC;
+    snapshot.indoorHumidityPct = snapshot.humidityPct;
+
+    const size_t dailyCount = std::min<size_t>(7, data.daily.size());
+    snapshot.weekly.reserve(dailyCount);
+    for (size_t i = 0; i < dailyCount; ++i) {
+        const WeatherDaily &day = data.daily[i];
+        snapshot.weekly.push_back(WeatherDayCell{
+            asciiUpper(formatIsoDateLabel(day.date, "%a")).substr(0, 3),
+            day.weather_code,
+            static_cast<int>(std::round(day.temp_max)),
+            static_cast<int>(std::round(day.temp_min)),
+            formatIsoDateLabel(day.date, "%b %d"),
+        });
+    }
+
+    const String todayDate = data.daily.empty() ? String() : data.daily.front().date;
+    snapshot.hourly.reserve(8);
+    for (size_t i = 0; i < data.hourly.size() && snapshot.hourly.size() < 8; ++i) {
+        const WeatherHourly &hour = data.hourly[i];
+        const int hourValue = isoHourValue(hour.time);
+        if (!isoDateMatches(hour.time, todayDate) || hourValue < 0 || hourValue % 3 != 0) {
+            continue;
+        }
+        snapshot.hourly.push_back(WeatherHourCell{
+            isoHourLabel(hour.time),
+            static_cast<int>(std::round(hour.temperature)),
+            hour.precipitation_probability,
+        });
+    }
+    for (size_t i = 0; snapshot.hourly.empty() && i < data.hourly.size() && snapshot.hourly.size() < 8;
+         i += 3) {
+        const WeatherHourly &hour = data.hourly[i];
+        snapshot.hourly.push_back(WeatherHourCell{
+            isoHourLabel(hour.time),
+            static_cast<int>(std::round(hour.temperature)),
+            hour.precipitation_probability,
+        });
+    }
+
+    return snapshot;
+}
+#endif
+
 uint32_t dashboardContentHash(PageId page, const WeatherClass &weather, const String &localIP) {
     uint32_t hash = 2166136261UL;
     hash = fnv1aAdd(hash, static_cast<uint32_t>(page));
@@ -84,6 +280,8 @@ uint32_t dashboardContentHash(PageId page, const WeatherClass &weather, const St
         hash = fnv1aAdd(hash, scaledFloatHash(data.current.apparent_temperature, 10.0f));
         hash = fnv1aAdd(hash, scaledFloatHash(data.current.humidity, 1.0f));
         hash = fnv1aAdd(hash, static_cast<uint32_t>(data.current.weather_code));
+        hash = fnv1aAdd(hash, static_cast<uint32_t>(data.daily.size()));
+        hash = fnv1aAdd(hash, static_cast<uint32_t>(data.hourly.size()));
         hash = fnv1aAdd(hash, aqi.valid ? 1 : 0);
         hash = fnv1aAdd(hash, static_cast<uint32_t>(aqi.us_aqi));
         hash = fnv1aAddString(hash, localIP);
@@ -159,6 +357,7 @@ void DashboardApp::_detectWakeup() {
     bool isBootWake = (cause == ESP_SLEEP_WAKEUP_EXT0);
 
     _lastButtonAction = ButtonAction::None;
+    _restorePersistedPage = (cause != ESP_SLEEP_WAKEUP_UNDEFINED);
     if (isBootWake) {
         uint8_t pin = getBoard().bootButtonPin();
         configureButtonInput(pin);
@@ -342,68 +541,74 @@ void DashboardApp::_renderDashboardPage(IBoard &board, PageManager &pageManager,
     const PageDescriptor *descriptor = findPage(page);
     log_i(TAG, "Rendering dashboard page: %s (%u)",
           descriptor ? descriptor->name : "Unknown", static_cast<unsigned>(page));
-    if (page == PageId::WeatherToday) {
-        _renderWeather(board, weather, cfg, localIP);
-        return;
-    }
-
 #if defined(UI_LAYOUT_EPD_400x300)
     GfxSurface surface(board.gfx());
+    const size_t pageNumber = pageManager.pageNumber(page);
+    const size_t pageCount = pageManager.pageCount();
     board.epd().firstPage();
     do {
         switch (page) {
+            case PageId::WeatherToday:
+                renderWeatherTodayPage(surface, buildWeatherPageSnapshot(weather, cfg),
+                                       pageNumber, pageCount);
+                break;
             case PageId::Overview:
-                renderOverviewPage(surface, sampleCalendarPageSnapshot());
+                renderOverviewPage(surface, sampleCalendarPageSnapshot(), pageNumber, pageCount);
                 break;
             case PageId::TodayAgenda:
-                renderTodayAgendaPage(surface, sampleCalendarPageSnapshot());
+                renderTodayAgendaPage(surface, sampleCalendarPageSnapshot(), pageNumber, pageCount);
                 break;
             case PageId::WeeklyTimeline:
-                renderWeeklyTimelinePage(surface, sampleCalendarPageSnapshot());
+                renderWeeklyTimelinePage(surface, sampleCalendarPageSnapshot(), pageNumber, pageCount);
                 break;
             case PageId::MonthlyOverview:
-                renderMonthlyOverviewPage(surface, sampleCalendarPageSnapshot());
+                renderMonthlyOverviewPage(surface, sampleCalendarPageSnapshot(), pageNumber, pageCount);
                 break;
             case PageId::LocalNotes:
-                renderLocalNotesPage(surface, sampleCalendarPageSnapshot());
+                renderLocalNotesPage(surface, sampleCalendarPageSnapshot(), pageNumber, pageCount);
                 break;
             case PageId::WeeklyWeather:
-                renderWeeklyWeatherPage(surface, sampleWeatherPageSnapshot());
+                renderWeeklyWeatherPage(surface, buildWeatherPageSnapshot(weather, cfg),
+                                        pageNumber, pageCount);
                 break;
             case PageId::IndoorClimate:
-                renderIndoorClimatePage(surface, sampleWeatherPageSnapshot());
+                renderIndoorClimatePage(surface, buildWeatherPageSnapshot(weather, cfg),
+                                        pageNumber, pageCount);
                 break;
             case PageId::WorldClock:
                 renderWorldClockPage(surface,
                                       worldClockPageSnapshotAt(nowUtc, cfg.timeZoneId.c_str(),
-                                                               pageManager.pageNumber(page),
-                                                               pageManager.pageCount()));
+                                                               pageNumber, pageCount),
+                                      pageNumber, pageCount);
                 break;
             case PageId::FocusClock:
                 renderFocusClockPage(surface,
                                      worldClockPageSnapshotAt(nowUtc, cfg.timeZoneId.c_str(),
-                                                              pageManager.pageNumber(page),
-                                                              pageManager.pageCount()));
+                                                              pageNumber, pageCount),
+                                     pageNumber, pageCount);
                 break;
             case PageId::StockInfo:
-                renderStockInfoPage(surface, sampleFinancePageSnapshot());
+                renderStockInfoPage(surface, sampleFinancePageSnapshot(), pageNumber, pageCount);
                 break;
             case PageId::PortfolioSummary:
-                renderPortfolioSummaryPage(surface, sampleFinancePageSnapshot());
+                renderPortfolioSummaryPage(surface, sampleFinancePageSnapshot(),
+                                           pageNumber, pageCount);
                 break;
             case PageId::EconomicCalendar:
-                renderEconomicCalendarPage(surface, sampleFinancePageSnapshot());
+                renderEconomicCalendarPage(surface, sampleFinancePageSnapshot(),
+                                           pageNumber, pageCount);
                 break;
             case PageId::Headlines:
-                renderHeadlinesPage(surface, sampleNewsPageSnapshot());
+                renderHeadlinesPage(surface, sampleNewsPageSnapshot(), pageNumber, pageCount);
                 break;
             case PageId::TodayInHistory:
-                renderTodayInHistoryPage(surface, sampleNewsPageSnapshot());
+                renderTodayInHistoryPage(surface, sampleNewsPageSnapshot(),
+                                         pageNumber, pageCount);
                 break;
             case PageId::ImportantMilestones:
-                renderImportantMilestonesPage(surface, sampleCalendarPageSnapshot());
+                renderImportantMilestonesPage(surface, sampleCalendarPageSnapshot(),
+                                              pageNumber, pageCount);
                 break;
-            case PageId::WeatherToday:
             default:
                 break;
         }
@@ -616,8 +821,12 @@ void DashboardApp::run() {
     const PageSettings settings = pageSettingsFromConfig(cfg);
     PageManager pageManager(settings);
     const PageId persistedPage = loadPersistedCurrentPage(settings);
-    const PageId restoredPage = pageManager.restoreStoredPage(persistedPage);
-    log_i(TAG, "Restored page from NVS: %u", static_cast<unsigned>(restoredPage));
+    const PageId startupPage = selectStartupPage(persistedPage, settings, _restorePersistedPage);
+    const PageId restoredPage = pageManager.restoreStoredPage(startupPage);
+    log_i(TAG, "Startup page: %u persisted=%u restore=%d",
+          static_cast<unsigned>(restoredPage),
+          static_cast<unsigned>(persistedPage),
+          _restorePersistedPage ? 1 : 0);
 
     _initHardware(board, _coldBoot);
 
@@ -697,4 +906,3 @@ void DashboardApp::run() {
                          static_cast<uint64_t>(cfg.sleepDuration) * 60ULL * 1000000ULL,
                          finalPage);
 }
-

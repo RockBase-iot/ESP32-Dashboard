@@ -68,6 +68,7 @@ public:
 
     size_t outOfBoundsCount() const { return _outOfBounds; }
     size_t invalidColorCount() const { return _invalidColor; }
+    size_t accentTopLeftIconPixelCount() const { return _accentTopLeftIconPixels; }
     const std::vector<TextOp> &textOps() const { return _textOps; }
 
 private:
@@ -78,5 +79,6 @@ private:
     int16_t _height;
     size_t _outOfBounds = 0;
     size_t _invalidColor = 0;
+    size_t _accentTopLeftIconPixels = 0;
     std::vector<TextOp> _textOps;
 };
