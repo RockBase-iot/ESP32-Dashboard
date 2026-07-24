@@ -72,6 +72,18 @@ bool inEuropeDstUtc(const std::string &iana, int64_t utcSeconds) {
     (void)iana;
     return utcSeconds >= start && utcSeconds < end;
 }
+
+bool inSydneyDstUtc(int64_t utcSeconds) {
+    int year = 1970;
+    unsigned month = 1;
+    unsigned day = 1;
+    timezoneCatalogCivilFromDays(utcSeconds / 86400LL, year, month, day);
+    const int startDay = nthSunday(year, 10, 1);
+    const int endDay = nthSunday(year, 4, 1);
+    const int64_t start = timezoneCatalogDaysFromCivil(year, 10, static_cast<unsigned>(startDay)) * 86400LL - 10 * 3600LL + 2 * 3600LL;
+    const int64_t end = timezoneCatalogDaysFromCivil(year, 4, static_cast<unsigned>(endDay)) * 86400LL - 11 * 3600LL + 3 * 3600LL;
+    return utcSeconds >= start || utcSeconds < end;
+}
 }  // namespace
 
 const std::vector<TimezoneCatalogEntry> &timezoneCatalog() {
@@ -81,12 +93,15 @@ const std::vector<TimezoneCatalogEntry> &timezoneCatalog() {
         {"GMT", "UTC0", 0, 0, false},
         {"Asia/Shanghai", "CST-8", 8 * 3600, 8 * 3600, false},
         {"Asia/Tokyo", "JST-9", 9 * 3600, 9 * 3600, false},
+        {"Asia/Seoul", "KST-9", 9 * 3600, 9 * 3600, false},
         {"Europe/London", "GMT0BST,M3.5.0/1,M10.5.0/2", 0, 3600, true},
         {"Europe/Berlin", "CET-1CEST,M3.5.0/2,M10.5.0/3", 3600, 2 * 3600, true},
+        {"Europe/Paris", "CET-1CEST,M3.5.0/2,M10.5.0/3", 3600, 2 * 3600, true},
         {"America/New_York", "EST5EDT,M3.2.0/2,M11.1.0/2", -5 * 3600, -4 * 3600, true},
         {"America/Chicago", "CST6CDT,M3.2.0/2,M11.1.0/2", -6 * 3600, -5 * 3600, true},
         {"America/Denver", "MST7MDT,M3.2.0/2,M11.1.0/2", -7 * 3600, -6 * 3600, true},
         {"America/Los_Angeles", "PST8PDT,M3.2.0/2,M11.1.0/2", -8 * 3600, -7 * 3600, true},
+        {"Australia/Sydney", "AEST-10AEDT,M10.1.0,M4.1.0/3", 10 * 3600, 11 * 3600, true},
     };
     return kCatalog;
 }
@@ -107,8 +122,11 @@ int timezoneOffsetSecondsAtUtc(const std::string &iana, int64_t utcSeconds) {
     if (iana == "Europe/London") {
         return inEuropeDstUtc(iana, utcSeconds) ? 3600 : 0;
     }
-    if (iana == "Europe/Berlin") {
+    if (iana == "Europe/Berlin" || iana == "Europe/Paris") {
         return inEuropeDstUtc(iana, utcSeconds) ? 2 * 3600 : 3600;
+    }
+    if (iana == "Australia/Sydney") {
+        return inSydneyDstUtc(utcSeconds) ? 11 * 3600 : 10 * 3600;
     }
     for (const TimezoneCatalogEntry &entry : timezoneCatalog()) {
         if (iana == entry.iana) {

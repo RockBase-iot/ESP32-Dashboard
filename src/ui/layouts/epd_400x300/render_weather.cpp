@@ -86,6 +86,10 @@ std::string weatherDateLabel(const WeatherDayCell &day) {
     return day.dateLabel.empty() ? day.label : day.dateLabel;
 }
 
+bool isTodayCell(const WeatherDayCell &day, size_t index) {
+    return day.today || index == 0;
+}
+
 std::vector<WeatherDayCell> weeklyWeatherWindow(const std::vector<WeatherDayCell> &weekly) {
     if (weekly.empty()) {
         return {};
@@ -134,7 +138,7 @@ void drawCompactWeeklyForecast(IDrawSurface &surface, const Rect &rect,
     for (size_t i = 0; i < count; ++i) {
         const WeatherDayCell &day = days[i];
         const int16_t x = static_cast<int16_t>(rect.x + cellW * static_cast<int16_t>(i) + cellW / 2);
-        const bool today = day.label == "WED";
+        const bool today = isTodayCell(day, i);
         surface.drawText(x, static_cast<int16_t>(rect.y + 4), day.label,
                          today ? kDashboardAccent : kDashboardBlack, TextAlign::Center, 1);
         surface.drawText(x, static_cast<int16_t>(rect.y + 16),
@@ -277,7 +281,7 @@ void drawWeeklyWeatherTrend(IDrawSurface &surface, const Rect &rect,
         surface.fillRect(static_cast<int16_t>(x - 1), static_cast<int16_t>(lowY - 1), 3, 3,
                          kDashboardBlack);
         surface.drawText(x, static_cast<int16_t>(rect.y + rect.h - 10), days[i].label,
-                         days[i].label == "WED" ? kDashboardAccent : kDashboardBlack,
+                         isTodayCell(days[i], i) ? kDashboardAccent : kDashboardBlack,
                          TextAlign::Center, 1);
     }
 }
@@ -294,8 +298,8 @@ void drawWeeklyWeatherSummary(IDrawSurface &surface, const Rect &rect,
     for (size_t i = 0; i < days.size(); ++i) {
         const WeatherDayCell &day = days[i];
         const int16_t x = static_cast<int16_t>(rect.x + static_cast<int16_t>(i) * (cellW + gap));
-        const bool today = day.label == "WED";
-        const std::string caption = i == 0 ? "YESTERDAY" : (today ? "TODAY" : day.label);
+        const bool today = isTodayCell(day, i);
+        const std::string caption = today ? "TODAY" : day.label;
         const Rect cell{x, rect.y, cellW, rect.h};
         surface.drawRect(cell.x, cell.y, cell.w, cell.h, today ? kDashboardAccent : kDashboardBlack);
         surface.drawText(static_cast<int16_t>(cell.x + cell.w / 2),
@@ -331,7 +335,7 @@ WeatherPageSnapshot sampleWeatherPageSnapshot() {
     snapshot.indoorTempC = 23;
     snapshot.indoorHumidityPct = 46;
     snapshot.weekly = {
-        {"TUE", 3, 21, 15, "JUL 21"},
+        {"TUE", 3, 21, 15, "JUL 21", true},
         {"WED", 61, 20, 14, "JUL 22"},
         {"THU", 1, 24, 16, "JUL 23"},
         {"FRI", 1, 24, 17, "JUL 24"},
@@ -354,9 +358,12 @@ WeatherPageSnapshot sampleWeatherPageSnapshot() {
 }
 
 void renderWeatherTodayPage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot,
-                            size_t pageNumber, size_t pageCount) {
+                            size_t pageNumber, size_t pageCount, const std::string &ipText,
+                            calm_grid::ChromeContext chrome) {
     calm_grid::drawPrototypePageChrome(surface, "WEATHER TODAY",
-                                       calm_grid::PageIconKind::Weather, pageNumber, pageCount);
+                                       calm_grid::PageIconKind::Weather, pageNumber, pageCount,
+                                       chrome.timeText, ipText.empty() ? chrome.ipText : ipText,
+                                       chrome.batteryText);
 
     surface.drawRect(18, 58, 118, 166, kDashboardBlack);
     surface.drawText(30, 65, calm_grid::fitText(surface, snapshot.city, 92, 1),
@@ -386,9 +393,12 @@ void renderWeatherTodayPage(IDrawSurface &surface, const WeatherPageSnapshot &sn
 }
 
 void renderWeeklyWeatherPage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot,
-                             size_t pageNumber, size_t pageCount) {
+                             size_t pageNumber, size_t pageCount, const std::string &ipText,
+                             calm_grid::ChromeContext chrome) {
     calm_grid::drawPrototypePageChrome(surface, "WEEKLY WEATHER",
-                                       calm_grid::PageIconKind::Weather, pageNumber, pageCount);
+                                       calm_grid::PageIconKind::Weather, pageNumber, pageCount,
+                                       chrome.timeText, ipText.empty() ? chrome.ipText : ipText,
+                                       chrome.batteryText);
     const std::string tempUnit = normalizeTempUnit(snapshot.tempUnit);
     std::vector<WeatherDayCell> days = weeklyWeatherWindow(snapshot.weekly);
     drawWeeklyWeatherTrend(surface, Rect{18, 62, 364, 113}, days, tempUnit);
@@ -396,9 +406,12 @@ void renderWeeklyWeatherPage(IDrawSurface &surface, const WeatherPageSnapshot &s
 }
 
 void renderIndoorClimatePage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot,
-                             size_t pageNumber, size_t pageCount) {
+                             size_t pageNumber, size_t pageCount, const std::string &ipText,
+                             calm_grid::ChromeContext chrome) {
     calm_grid::drawPrototypePageChrome(surface, "INDOOR CLIMATE",
-                                       calm_grid::PageIconKind::Weather, pageNumber, pageCount);
+                                       calm_grid::PageIconKind::Weather, pageNumber, pageCount,
+                                       chrome.timeText, ipText.empty() ? chrome.ipText : ipText,
+                                       chrome.batteryText);
     const std::string tempUnit = normalizeTempUnit(snapshot.tempUnit);
     drawWeatherMetricCard(surface, Rect{18, 64, 176, 58}, "Indoor",
                           tempTextFromC(snapshot.indoorTempC, tempUnit));

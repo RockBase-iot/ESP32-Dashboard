@@ -38,6 +38,27 @@ void test_secret_metadata_masks_url_query_and_api_key() {
     TEST_ASSERT_EQUAL(-1, meta.maskedApiKey.find("APIKEY-SECRET"));
 }
 
+void test_google_ical_metadata_is_configured_without_echoing_private_url() {
+    MemorySecretBackend backend;
+    CalendarSecretStore store(backend);
+    CalendarSourceSecrets secrets;
+    secrets.index = 0;
+    secrets.url = "https://calendar.google.com/calendar/ical/user%40example.com/private-token/basic.ics";
+    secrets.alias = "Google";
+    secrets.enabled = true;
+
+    TEST_ASSERT_TRUE(store.saveSource(secrets));
+    const auto meta = store.readMetadata(0);
+
+    TEST_ASSERT_TRUE(meta.configured);
+    TEST_ASSERT_TRUE(meta.enabled);
+    TEST_ASSERT_EQUAL_STRING("Google", meta.alias.c_str());
+    TEST_ASSERT_EQUAL_STRING("calendar.google.com", meta.host.c_str());
+    TEST_ASSERT_NOT_EQUAL(-1, meta.maskedUrl.find("calendar.google.com"));
+    TEST_ASSERT_EQUAL(-1, meta.maskedUrl.find("private-token"));
+    TEST_ASSERT_EQUAL(-1, meta.maskedUrl.find("user%40example.com"));
+}
+
 void test_read_secret_returns_empty_for_invalid_index() {
     MemorySecretBackend backend;
     CalendarSecretStore store(backend);
@@ -78,6 +99,7 @@ void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_uses_short_nvs_keys_for_twenty_calendar_sources);
     RUN_TEST(test_secret_metadata_masks_url_query_and_api_key);
+    RUN_TEST(test_google_ical_metadata_is_configured_without_echoing_private_url);
     RUN_TEST(test_read_secret_returns_empty_for_invalid_index);
     RUN_TEST(test_delete_source_removes_url_key_state_and_cache_marker);
     UNITY_END();

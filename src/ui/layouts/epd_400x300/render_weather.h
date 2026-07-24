@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "ui/canvas/draw_surface.h"
+#include "ui/components/calm_grid.h"
 
 struct WeatherDayCell {
     std::string label;
@@ -14,6 +14,7 @@ struct WeatherDayCell {
     int highC = 0;
     int lowC = 0;
     std::string dateLabel;
+    bool today = false;
 };
 
 struct WeatherHourCell {
@@ -46,8 +47,14 @@ struct WeatherPageSnapshot {
 
 WeatherPageSnapshot sampleWeatherPageSnapshot();
 void renderWeatherTodayPage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot,
-                            size_t pageNumber = 6, size_t pageCount = 8);
+                            size_t pageNumber = 6, size_t pageCount = 8,
+                            const std::string &ipText = "IP: --",
+                            calm_grid::ChromeContext chrome = calm_grid::ChromeContext());
 void renderWeeklyWeatherPage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot,
-                             size_t pageNumber = 6, size_t pageCount = 8);
+                             size_t pageNumber = 6, size_t pageCount = 8,
+                             const std::string &ipText = "IP: --",
+                             calm_grid::ChromeContext chrome = calm_grid::ChromeContext());
 void renderIndoorClimatePage(IDrawSurface &surface, const WeatherPageSnapshot &snapshot,
-                             size_t pageNumber = 6, size_t pageCount = 8);
+                             size_t pageNumber = 6, size_t pageCount = 8,
+                             const std::string &ipText = "IP: --",
+                             calm_grid::ChromeContext chrome = calm_grid::ChromeContext());

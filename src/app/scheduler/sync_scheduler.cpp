@@ -32,3 +32,29 @@ std::vector<std::string> SyncScheduler::selectDueProviders(
     }
     return due;
 }
+
+PageSyncRequirements syncRequirementsForDisplayPage(bool homeWeather, PageId page) {
+    PageSyncRequirements requirements;
+    if (homeWeather) {
+        requirements.weather = true;
+        return requirements;
+    }
+
+    const PageDescriptor *descriptor = findPage(page);
+    if (!descriptor) {
+        return requirements;
+    }
+
+    for (const std::string &provider : descriptor->requiredProviders) {
+        if (provider == "weather") {
+            requirements.weather = true;
+        } else if (provider == "calendar") {
+            requirements.calendar = true;
+        } else if (provider == "finance" || provider == "economic") {
+            requirements.finance = true;
+        } else if (provider == "news" || provider == "history") {
+            requirements.news = true;
+        }
+    }
+    return requirements;
+}

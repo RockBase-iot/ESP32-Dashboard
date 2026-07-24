@@ -12,13 +12,13 @@ void test_stooq_csv_requires_source_and_asof_and_marks_delayed() {
     const auto parsed = parseStooqCsvQuotes(
         "Symbol,Date,Time,Open,High,Low,Close,Volume\n"
         "AAPL.US,2026-07-20,14:55:00,210.10,214.20,209.70,213.50,1200\n",
-        "stooq", 1784568900LL);
+        "Stooq", 1784568900LL);
 
     TEST_ASSERT_EQUAL_UINT32(1, parsed.quotes.size());
     TEST_ASSERT_EQUAL_STRING("AAPL.US", parsed.quotes[0].ticker.c_str());
     TEST_ASSERT_EQUAL_FLOAT(213.50f, parsed.quotes[0].price);
     TEST_ASSERT_TRUE(parsed.quotes[0].delayed);
-    TEST_ASSERT_EQUAL_STRING("stooq", parsed.quotes[0].source.c_str());
+    TEST_ASSERT_EQUAL_STRING("Stooq", parsed.quotes[0].source.c_str());
     TEST_ASSERT_TRUE(parsed.quotes[0].asOfUtc > 0);
 
     const auto missingSource = parseStooqCsvQuotes(
@@ -26,6 +26,22 @@ void test_stooq_csv_requires_source_and_asof_and_marks_delayed() {
         "MSFT.US,2026-07-20,14:55:00,1,1,1,510.25,1\n",
         "", 1784568900LL);
     TEST_ASSERT_EQUAL_UINT32(0, missingSource.quotes.size());
+}
+
+void test_stooq_builds_public_batch_csv_url() {
+    const std::string url = buildStooqCsvUrl(" AAPL.US, msft.us\nbtcusd ");
+
+    TEST_ASSERT_EQUAL_STRING(
+        "https://stooq.com/q/l/?s=aapl.us,msft.us,btcusd&f=sd2t2ohlcv&h&e=csv",
+        url.c_str());
+}
+
+void test_stooq_builds_polish_mirror_batch_csv_url() {
+    const std::string url = buildStooqCsvUrlForHost("stooq.pl", " AAPL.US; msft.us\nbtcusd ");
+
+    TEST_ASSERT_EQUAL_STRING(
+        "https://stooq.pl/q/l/?s=aapl.us,msft.us,btcusd&f=sd2t2ohlcv&h&e=csv",
+        url.c_str());
 }
 
 void test_stooq_csv_rejects_missing_asof_and_non_numeric_price() {
@@ -121,6 +137,8 @@ void test_economic_feed_parses_rss_and_ics_events() {
 void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_stooq_csv_requires_source_and_asof_and_marks_delayed);
+    RUN_TEST(test_stooq_builds_public_batch_csv_url);
+    RUN_TEST(test_stooq_builds_polish_mirror_batch_csv_url);
     RUN_TEST(test_stooq_csv_rejects_missing_asof_and_non_numeric_price);
     RUN_TEST(test_stooq_csv_marks_partial_ticker_failure);
     RUN_TEST(test_finance_quote_freshness_rejects_expired_quotes);

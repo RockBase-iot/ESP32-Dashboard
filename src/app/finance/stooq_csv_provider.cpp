@@ -1,6 +1,8 @@
 #include "stooq_csv_provider.h"
 
 #include <cerrno>
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <sstream>
 
@@ -62,7 +64,66 @@ bool parseStrictFloat(const std::string &text, float &out) {
     out = value;
     return true;
 }
+
+std::string trimFinanceText(const std::string &value) {
+    size_t begin = 0;
+    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
+        ++begin;
+    }
+    size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return value.substr(begin, end - begin);
+}
+
+std::vector<std::string> splitSymbolText(const std::string &symbolsText) {
+    std::vector<std::string> symbols;
+    std::string token;
+    for (char c : symbolsText) {
+        if (c == ',' || c == '\n' || c == '\r' || c == ';') {
+            token = trimFinanceText(token);
+            if (!token.empty()) {
+                std::transform(token.begin(), token.end(), token.begin(), [](unsigned char ch) {
+                    return static_cast<char>(std::tolower(ch));
+                });
+                symbols.push_back(token);
+            }
+            token.clear();
+        } else {
+            token.push_back(c);
+        }
+    }
+    token = trimFinanceText(token);
+    if (!token.empty()) {
+        std::transform(token.begin(), token.end(), token.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        symbols.push_back(token);
+    }
+    return symbols;
+}
 }  // namespace
+
+std::string buildStooqCsvUrlForHost(const std::string &host, const std::string &symbolsText) {
+    const auto symbols = splitSymbolText(symbolsText);
+    const std::string cleanHost = trimFinanceText(host);
+    if (symbols.empty() || cleanHost.empty()) {
+        return "";
+    }
+    std::string joined;
+    for (size_t i = 0; i < symbols.size(); ++i) {
+        if (i > 0) {
+            joined += ",";
+        }
+        joined += symbols[i];
+    }
+    return "https://" + cleanHost + "/q/l/?s=" + joined + "&f=sd2t2ohlcv&h&e=csv";
+}
+
+std::string buildStooqCsvUrl(const std::string &symbolsText) {
+    return buildStooqCsvUrlForHost("stooq.com", symbolsText);
+}
 
 FinanceQuoteSet parseStooqCsvQuotes(const std::string &csv, const std::string &source,
                                     int64_t fallbackAsOfUtc) {

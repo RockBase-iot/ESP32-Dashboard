@@ -14,6 +14,12 @@ struct LabelValue {
     bool accent = false;
 };
 
+struct ChromeContext {
+    std::string timeText = "WED 14:32 JUL 22, 2026";
+    std::string ipText = "IP: --";
+    std::string batteryText = "82%";
+};
+
 enum class PageIconKind : uint8_t {
     Overview,
     Month,
@@ -31,7 +37,7 @@ void drawPrototypePageChrome(IDrawSurface &surface, const std::string &title,
                              PageIconKind icon, size_t pageNumber,
                              size_t pageCount,
                              const std::string &timeText = "WED 14:32 JUL 22, 2026",
-                             const std::string &ipText = "IP: 192.168.1.42",
+                             const std::string &ipText = "IP: --",
                              const std::string &batteryText = "82%");
 void drawPageHeader(IDrawSurface &surface, const std::string &title,
                     const std::string &rightText,

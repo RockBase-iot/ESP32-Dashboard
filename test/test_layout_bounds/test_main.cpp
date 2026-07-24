@@ -10,6 +10,8 @@
 #include "ui/components/calm_grid.cpp"
 #include "app/time/timezone_catalog.h"
 #include "app/time/timezone_catalog.cpp"
+#include "app/time/focus_clock_model.h"
+#include "app/time/focus_clock_model.cpp"
 #include "app/time/world_clock_model.h"
 #include "app/time/world_clock_model.cpp"
 #include "ui/layouts/epd_400x300/render_overview.h"
@@ -301,11 +303,13 @@ void assert_all_body_text_below_header(const MemoryDrawSurface &surface, int16_t
 
 void assert_prototype_chrome(const MemoryDrawSurface &surface, const char *title,
                              const char *pageIndicator,
-                             const char *timeText = "WED 14:32 JUL 22, 2026") {
+                             const char *timeText = "WED 14:32 JUL 22, 2026",
+                             const char *ipText = "IP: --",
+                             const char *batteryText = "82%") {
     const auto *titleText = find_text(surface, title);
-    const auto *battery = find_text(surface, "82%");
+    const auto *battery = find_text(surface, batteryText);
     const auto *time = find_text(surface, timeText);
-    const auto *ip = find_text(surface, "IP: 192.168.1.42");
+    const auto *ip = find_text(surface, ipText);
     const auto *page = find_text(surface, pageIndicator);
     TEST_ASSERT_NOT_NULL(titleText);
     TEST_ASSERT_NOT_NULL(battery);
@@ -321,6 +325,7 @@ void assert_prototype_chrome(const MemoryDrawSurface &surface, const char *title
     TEST_ASSERT_EQUAL_INT16(382, page->x);
     TEST_ASSERT_EQUAL_INT16(286, page->y);
     TEST_ASSERT_NULL(find_text(surface, "WiFi:192.168.1.42"));
+    TEST_ASSERT_NULL(find_text(surface, "IP: 192.168.1.42"));
     TEST_ASSERT_NULL(find_text(surface, "BAT:82%"));
 }
 }  // namespace
@@ -330,7 +335,7 @@ void test_calendar_pages_stay_inside_400x300() {
 
     {
         MemoryDrawSurface surface(400, 300);
-        renderOverviewPage(surface, snapshot);
+        renderOverviewPage(surface, snapshot, 1, 8, "IP: 10.0.0.23");
         assert_no_layout_faults(surface);
         assert_prototype_chrome(surface, "TODAY OVERVIEW", "1 | 8");
         assert_has_text(surface, "Design review");
@@ -338,7 +343,7 @@ void test_calendar_pages_stay_inside_400x300() {
     }
     {
         MemoryDrawSurface surface(400, 300);
-        renderMonthlyOverviewPage(surface, snapshot);
+        renderMonthlyOverviewPage(surface, snapshot, 2, 8, "IP: 10.0.0.23");
         assert_no_layout_faults(surface);
         assert_prototype_chrome(surface, "MONTHLY OVERVIEW", "2 | 8");
         assert_has_text(surface, "JULY 2026");
@@ -349,7 +354,7 @@ void test_calendar_pages_stay_inside_400x300() {
     }
     {
         MemoryDrawSurface surface(400, 300);
-        renderWeeklyTimelinePage(surface, snapshot);
+        renderWeeklyTimelinePage(surface, snapshot, 3, 8, "IP: 10.0.0.23");
         assert_no_layout_faults(surface);
         assert_prototype_chrome(surface, "WEEKLY TIMELINE", "3 | 8");
         assert_has_text(surface, "NEXT 09:00 - Design review");
@@ -382,6 +387,23 @@ void test_today_overview_matches_compact_prototype_layout() {
     const auto *detail = find_text(surface, "Office - Project Atlas");
     TEST_ASSERT_NOT_NULL(detail);
     TEST_ASSERT_LESS_OR_EQUAL(300, text_right(surface, *detail));
+}
+
+void test_prototype_chrome_accepts_runtime_time_battery_and_ip() {
+    CalendarPageSnapshot snapshot = sampleCalendarPageSnapshot();
+    calm_grid::ChromeContext chrome;
+    chrome.timeText = "THU 10:05 JUL 23, 2026";
+    chrome.batteryText = "76%";
+    chrome.ipText = "IP: 192.168.1.50";
+    MemoryDrawSurface surface(400, 300);
+
+    renderOverviewPage(surface, snapshot, 1, 12, chrome.ipText, chrome);
+
+    assert_prototype_chrome(surface, "TODAY OVERVIEW", "1 | 12",
+                            "THU 10:05 JUL 23, 2026", "IP: 192.168.1.50", "76%");
+    assert_has_text(surface, "76%");
+    TEST_ASSERT_NULL(find_text(surface, "82%"));
+    TEST_ASSERT_NULL(find_text(surface, "WED 14:32 JUL 22, 2026"));
 }
 
 void test_monthly_overview_uses_event_list_layout() {
@@ -468,7 +490,7 @@ void test_epd_pages_do_not_overlap_text_or_header() {
         [](MemoryDrawSurface &surface) { renderHeadlinesPage(surface, sampleNewsPageSnapshot()); },
         [](MemoryDrawSurface &surface) { renderTodayInHistoryPage(surface, sampleNewsPageSnapshot()); },
         [](MemoryDrawSurface &surface) { renderWorldClockPage(surface, sampleWorldClockPageSnapshot()); },
-        [](MemoryDrawSurface &surface) { renderFocusClockPage(surface, sampleWorldClockPageSnapshot()); },
+        [](MemoryDrawSurface &surface) { renderFocusClockPage(surface, sampleFocusClockPageSnapshot()); },
         [](MemoryDrawSurface &surface) { renderWeatherTodayPage(surface, sampleWeatherPageSnapshot()); },
         [](MemoryDrawSurface &surface) { renderWeeklyWeatherPage(surface, sampleWeatherPageSnapshot()); },
         [](MemoryDrawSurface &surface) { renderPortfolioSummaryPage(surface, sampleFinancePageSnapshot()); },
@@ -577,8 +599,8 @@ void test_weekly_weather_uses_five_day_trend_layout() {
     assert_prototype_chrome(surface, "WEEKLY WEATHER", "6 | 8");
     assert_has_text(surface, "5-DAY TREND");
     assert_has_text(surface, "HIGH / LOW");
-    assert_has_text(surface, "YESTERDAY");
     assert_has_text(surface, "TODAY");
+    TEST_ASSERT_NULL(find_text(surface, "YESTERDAY"));
     assert_has_text(surface, "JUL 21");
     assert_has_text(surface, "JUL 22");
     assert_has_text(surface, "68/57");
@@ -704,12 +726,13 @@ void test_world_clock_keeps_title_left_and_separates_card_text() {
     const auto *dateMeta = find_text(surface, "MON JUL 20, 2026");
     const auto *cityTitle = find_text(surface, "NEW YORK");
     const auto *timeText = find_text(surface, "08:42");
-    const auto *zoneStatus = find_text(surface, "EDT - WORKING");
+    const auto *zoneStatus = find_text(surface, "UTC-04 - MORNING");
     TEST_ASSERT_NOT_NULL(pageTitle);
     TEST_ASSERT_NOT_NULL(dateMeta);
     TEST_ASSERT_NOT_NULL(cityTitle);
     TEST_ASSERT_NOT_NULL(timeText);
     TEST_ASSERT_NOT_NULL(zoneStatus);
+    TEST_ASSERT_NULL(find_text(surface, "EDT - WORKING"));
     TEST_ASSERT_EQUAL_UINT(1, count_text(surface, "WORLD CLOCK"));
     TEST_ASSERT_TRUE(has_top_right_text(surface));
     assert_prototype_chrome(surface, "WORLD CLOCK", "4 | 8", "MON JUL 20, 2026");
@@ -734,6 +757,35 @@ void test_world_clock_keeps_title_left_and_separates_card_text() {
     assert_has_text(duplicateSurface, "4 | 8");
 }
 
+void test_focus_clock_page_uses_dedicated_countdown_layout() {
+    FocusClockConfig cfg;
+    cfg.focusMinutes = 25;
+    cfg.breakMinutes = 5;
+    cfg.sessionCount = 4;
+    const FocusClockRuntimeState state = startFocusClockSession(cfg, 1784551320LL);
+    const FocusClockPageSnapshot snapshot = focusClockPageSnapshotAt(
+        1784551320LL, "Asia/Shanghai", 10, 16, cfg, state);
+    MemoryDrawSurface surface(400, 300);
+
+    renderFocusClockPage(surface, snapshot, 10, 16);
+
+    assert_no_layout_faults(surface);
+    assert_no_text_overlap(surface);
+    assert_prototype_chrome(surface, "FOCUS CLOCK", "10 | 16",
+                            "MON 09:42 JUL 20, 2026");
+    assert_has_text(surface, "25 MIN");
+    assert_has_text(surface, "IN FOCUS");
+    assert_has_text(surface, "CYCLE 1 OF 4");
+    assert_has_text(surface, "25 MIN FOCUS");
+    assert_has_text(surface, "5 MIN BREAK");
+    assert_has_text(surface, "NEXT BREAK");
+    assert_has_text(surface, "END TIME");
+    assert_has_text(surface, "USER HOLD 2S START / STOP");
+    TEST_ASSERT_NULL(find_text(surface, "NEW YORK"));
+    TEST_ASSERT_NULL(find_text(surface, "LONDON"));
+    TEST_ASSERT_NULL(find_text(surface, "UTC-04 - MORNING"));
+}
+
 void test_weather_time_and_news_pages_stay_inside_400x300() {
     MemoryDrawSurface surface(400, 300);
 
@@ -741,7 +793,7 @@ void test_weather_time_and_news_pages_stay_inside_400x300() {
     renderWeeklyWeatherPage(surface, sampleWeatherPageSnapshot());
     renderIndoorClimatePage(surface, sampleWeatherPageSnapshot());
     renderWorldClockPage(surface, sampleWorldClockPageSnapshot());
-    renderFocusClockPage(surface, sampleWorldClockPageSnapshot());
+    renderFocusClockPage(surface, sampleFocusClockPageSnapshot());
     renderHeadlinesPage(surface, sampleNewsPageSnapshot());
     renderTodayInHistoryPage(surface, sampleNewsPageSnapshot());
 
@@ -782,6 +834,7 @@ void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_calendar_pages_stay_inside_400x300);
     RUN_TEST(test_today_overview_matches_compact_prototype_layout);
+    RUN_TEST(test_prototype_chrome_accepts_runtime_time_battery_and_ip);
     RUN_TEST(test_monthly_overview_uses_event_list_layout);
     RUN_TEST(test_weekly_timeline_has_clear_header_and_roomy_event_cards);
     RUN_TEST(test_today_agenda_uses_ascii_text_and_clear_status);
@@ -795,6 +848,7 @@ void setup() {
     RUN_TEST(test_weather_pages_keep_celsius_display_when_unit_is_celsius);
     RUN_TEST(test_weather_today_hourly_chart_scales_celsius_temperatures_into_view);
     RUN_TEST(test_world_clock_keeps_title_left_and_separates_card_text);
+    RUN_TEST(test_focus_clock_page_uses_dedicated_countdown_layout);
     RUN_TEST(test_weather_time_and_news_pages_stay_inside_400x300);
     RUN_TEST(test_finance_pages_match_prototype_text_and_stay_inside_400x300);
     UNITY_END();

@@ -24,6 +24,28 @@ void test_portfolio_computes_value_cost_and_gain_locally() {
     TEST_ASSERT_EQUAL_STRING("AAPL.US", summary.topMovers[0].ticker.c_str());
 }
 
+void test_portfolio_parses_web_config_position_format() {
+    const auto positions = parsePortfolioPositionsText("AAPL.US:2:180:USD\nMSFT.US:1.5:420:USD");
+
+    TEST_ASSERT_EQUAL_UINT32(2, positions.size());
+    TEST_ASSERT_EQUAL_STRING("AAPL.US", positions[0].ticker.c_str());
+    TEST_ASSERT_EQUAL_FLOAT(2.0f, positions[0].quantity);
+    TEST_ASSERT_EQUAL_FLOAT(180.0f, positions[0].costBasis);
+    TEST_ASSERT_EQUAL_STRING("USD", positions[0].currency.c_str());
+}
+
+void test_portfolio_matches_short_ticker_to_stooq_us_symbol() {
+    PortfolioSnapshot snapshot;
+    snapshot.positions = {{"AAPL", 2.0f, 180.0f, "USD"}};
+    snapshot.quotes = {{"AAPL.US", 200.0f, 1.0f, 0.5f, "USD", 1784568900LL, true, "Stooq"}};
+
+    const auto summary = calculatePortfolioSummary(snapshot);
+
+    TEST_ASSERT_EQUAL_UINT32(0, summary.missingQuotes);
+    TEST_ASSERT_EQUAL_FLOAT(400.0f, summary.marketValue);
+    TEST_ASSERT_EQUAL_STRING("AAPL", summary.topMovers[0].ticker.c_str());
+}
+
 void test_portfolio_rejects_negative_quantity_and_zero_cost_is_supported() {
     TEST_ASSERT_FALSE(isValidPortfolioPosition({"BAD", -1.0f, 10.0f, "USD"}));
     TEST_ASSERT_TRUE(isValidPortfolioPosition({"GIFT", 1.0f, 0.0f, "USD"}));
@@ -71,6 +93,8 @@ void test_portfolio_export_escapes_tickers_when_explicitly_included() {
 void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_portfolio_computes_value_cost_and_gain_locally);
+    RUN_TEST(test_portfolio_parses_web_config_position_format);
+    RUN_TEST(test_portfolio_matches_short_ticker_to_stooq_us_symbol);
     RUN_TEST(test_portfolio_rejects_negative_quantity_and_zero_cost_is_supported);
     RUN_TEST(test_portfolio_flags_missing_exchange_rate_or_quote_currency);
     RUN_TEST(test_portfolio_export_excludes_positions_by_default);

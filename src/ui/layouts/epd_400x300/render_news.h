@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "ui/canvas/draw_surface.h"
+#include "ui/components/calm_grid.h"
 
 struct NewsItemCell {
     std::string title;
@@ -23,6 +23,10 @@ struct NewsPageSnapshot {
 
 NewsPageSnapshot sampleNewsPageSnapshot();
 void renderHeadlinesPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
-                         size_t pageNumber = 5, size_t pageCount = 8);
+                         size_t pageNumber = 5, size_t pageCount = 8,
+                         const std::string &ipText = "IP: --",
+                         calm_grid::ChromeContext chrome = calm_grid::ChromeContext());
 void renderTodayInHistoryPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
-                              size_t pageNumber = 5, size_t pageCount = 8);
+                              size_t pageNumber = 5, size_t pageCount = 8,
+                              const std::string &ipText = "IP: --",
+                              calm_grid::ChromeContext chrome = calm_grid::ChromeContext());

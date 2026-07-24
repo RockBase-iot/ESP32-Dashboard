@@ -8,18 +8,29 @@
 namespace {
 constexpr int16_t kOverviewMargin = 18;
 
-void drawOverviewWeekStrip(IDrawSurface &surface, const Rect &rect) {
+std::vector<CalendarDayCell> defaultWeekCells() {
     const std::array<const char *, 7> dayLabels = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
     const std::array<const char *, 7> dayDates = {"20", "21", "22", "23", "24", "25", "26"};
-    const int16_t cellW = static_cast<int16_t>(rect.w / 7);
+    std::vector<CalendarDayCell> cells;
+    cells.reserve(7);
     for (size_t i = 0; i < dayLabels.size(); ++i) {
+        cells.push_back({dayDates[i], dayLabels[i], false, i == 2, i == 2});
+    }
+    return cells;
+}
+
+void drawOverviewWeekStrip(IDrawSurface &surface, const Rect &rect,
+                           const std::vector<CalendarDayCell> &weekCells) {
+    const std::vector<CalendarDayCell> fallback = weekCells.empty() ? defaultWeekCells() : weekCells;
+    const int16_t cellW = static_cast<int16_t>(rect.w / 7);
+    for (size_t i = 0; i < fallback.size() && i < 7; ++i) {
         const int16_t x = static_cast<int16_t>(rect.x + static_cast<int16_t>(i) * cellW);
-        const bool active = i == 2;
+        const bool active = fallback[i].today || fallback[i].accent;
         surface.drawText(static_cast<int16_t>(x + cellW / 2), static_cast<int16_t>(rect.y + 10),
-                         dayLabels[i], active ? kDashboardAccent : kDashboardBlack,
+                         fallback[i].detail, active ? kDashboardAccent : kDashboardBlack,
                          TextAlign::Center, 1);
         surface.drawText(static_cast<int16_t>(x + cellW / 2), static_cast<int16_t>(rect.y + 20),
-                         dayDates[i], active ? kDashboardAccent : kDashboardBlack,
+                         fallback[i].text, active ? kDashboardAccent : kDashboardBlack,
                          TextAlign::Center, 1);
     }
     surface.drawLine(rect.x, static_cast<int16_t>(rect.y + rect.h + 4),
@@ -69,7 +80,10 @@ void drawOverviewSidebarCard(IDrawSurface &surface, const Rect &rect, const std:
 CalendarPageSnapshot sampleCalendarPageSnapshot() {
     CalendarPageSnapshot snapshot;
     snapshot.title = "TODAY OVERVIEW";
-    snapshot.subtitle = "WiFi:192.168.1.42 BAT:82%";
+    snapshot.subtitle = "WiFi:on BAT:82%";
+    snapshot.dateTitle = "JULY 2026";
+    snapshot.weekRangeLabel = "JUL 20-26 2026";
+    snapshot.weekCells = defaultWeekCells();
     snapshot.overviewItems = {
         {"09:00", "Design review", "Office - Project Atlas", true},
         {"15:00", "Pick up Mia", "School entrance", false},
@@ -142,10 +156,13 @@ CalendarPageSnapshot sampleCalendarPageSnapshot() {
 }
 
 void renderOverviewPage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot,
-                        size_t pageNumber, size_t pageCount) {
+                        size_t pageNumber, size_t pageCount, const std::string &ipText,
+                        calm_grid::ChromeContext chrome) {
     calm_grid::drawPrototypePageChrome(surface, "TODAY OVERVIEW",
-                                       calm_grid::PageIconKind::Overview, pageNumber, pageCount);
-    drawOverviewWeekStrip(surface, Rect{kOverviewMargin, 52, 364, 28});
+                                       calm_grid::PageIconKind::Overview, pageNumber, pageCount,
+                                       chrome.timeText, ipText.empty() ? chrome.ipText : ipText,
+                                       chrome.batteryText);
+    drawOverviewWeekStrip(surface, Rect{kOverviewMargin, 52, 364, 28}, snapshot.weekCells);
 
     const Rect agenda{kOverviewMargin, 86, 220, 122};
     // surface.drawRect(agenda.x, agenda.y, agenda.w, agenda.h, kDashboardBlack);

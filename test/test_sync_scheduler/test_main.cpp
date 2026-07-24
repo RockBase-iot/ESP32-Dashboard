@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "app/page/page_catalog.cpp"
 #include "app/scheduler/sync_scheduler.h"
 #include "app/scheduler/sync_scheduler.cpp"
 
@@ -43,10 +44,51 @@ void test_ttl_controls_due_provider_selection() {
     TEST_ASSERT_EQUAL_STRING("weather", due[0].c_str());
 }
 
-int main(int, char **) {
+void test_display_page_sync_requirements_match_visible_page() {
+    auto req = syncRequirementsForDisplayPage(/*homeWeather=*/true, PageId::FocusClock);
+    TEST_ASSERT_TRUE(req.weather);
+    TEST_ASSERT_FALSE(req.calendar);
+    TEST_ASSERT_FALSE(req.finance);
+    TEST_ASSERT_FALSE(req.news);
+
+    req = syncRequirementsForDisplayPage(false, PageId::FocusClock);
+    TEST_ASSERT_FALSE(req.weather);
+    TEST_ASSERT_FALSE(req.calendar);
+    TEST_ASSERT_FALSE(req.finance);
+    TEST_ASSERT_FALSE(req.news);
+
+    req = syncRequirementsForDisplayPage(false, PageId::WorldClock);
+    TEST_ASSERT_FALSE(req.weather);
+    TEST_ASSERT_FALSE(req.calendar);
+    TEST_ASSERT_FALSE(req.finance);
+    TEST_ASSERT_FALSE(req.news);
+
+    req = syncRequirementsForDisplayPage(false, PageId::Overview);
+    TEST_ASSERT_TRUE(req.weather);
+    TEST_ASSERT_TRUE(req.calendar);
+    TEST_ASSERT_FALSE(req.finance);
+    TEST_ASSERT_FALSE(req.news);
+
+    req = syncRequirementsForDisplayPage(false, PageId::StockInfo);
+    TEST_ASSERT_FALSE(req.weather);
+    TEST_ASSERT_FALSE(req.calendar);
+    TEST_ASSERT_TRUE(req.finance);
+    TEST_ASSERT_FALSE(req.news);
+
+    req = syncRequirementsForDisplayPage(false, PageId::Headlines);
+    TEST_ASSERT_FALSE(req.weather);
+    TEST_ASSERT_FALSE(req.calendar);
+    TEST_ASSERT_FALSE(req.finance);
+    TEST_ASSERT_TRUE(req.news);
+}
+
+void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_unreferenced_provider_is_not_selected);
     RUN_TEST(test_retry_after_blocks_rate_limited_provider);
     RUN_TEST(test_ttl_controls_due_provider_selection);
-    return UNITY_END();
+    RUN_TEST(test_display_page_sync_requirements_match_visible_page);
+    UNITY_END();
 }
+
+void loop() {}

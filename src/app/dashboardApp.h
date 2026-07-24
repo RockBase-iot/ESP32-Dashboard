@@ -4,14 +4,18 @@
 
 #include "app/input/button_controller.h"
 #include "app/page/page_catalog.h"
+#include "app/time/focus_clock_model.h"
 
 // Forward declarations for private method parameters.
 class  IBoard;
 class  WifiManager;
 class  WeatherClass;
 class  PageManager;
+class  DisplayPageState;
 struct AppConfig;
+struct CalendarPageSnapshot;
 class  String;
+namespace calm_grid { struct ChromeContext; }
 
 // DashboardApp — top-level application controller.
 //
@@ -39,6 +43,7 @@ private:
     static bool    _apMode;     // long press:  AP config mode
     static bool    _restorePersistedPage; // true after deep-sleep wake
     static ButtonAction _lastButtonAction;
+    static FocusClockRuntimeState _focusClockState;
 
     // ── Phase helpers (called in order from run()) ─────────────────────────
 
@@ -61,7 +66,8 @@ private:
     // 2b-iii. Fetch weather + AQI; capture local IP before disconnect.
     //         Returns false on failure.
     static bool _fetchData(IBoard &board, WeatherClass &weather,
-                          const AppConfig &cfg, String &outLocalIP);
+                          const AppConfig &cfg, String &outLocalIP,
+                          bool fetchWeather);
 
     // 2b-iv. Render the weather page on the EPD.
     static void _renderWeather(IBoard &board, WeatherClass &weather,
@@ -70,21 +76,43 @@ private:
     // 2b-iv-b. Render a configured dashboard page.
     static void _renderDashboardPage(IBoard &board, PageManager &pageManager, PageId page,
                                      int64_t nowUtc, WeatherClass &weather,
-                                     const AppConfig &cfg, const String &localIP);
+                                     const CalendarPageSnapshot &calendarSnapshot,
+                                     const AppConfig &cfg, const String &localIP,
+                                     const calm_grid::ChromeContext &chrome);
+    static void _renderDisplayPage(IBoard &board, PageManager &pageManager,
+                                   DisplayPageState page, int64_t nowUtc,
+                                   WeatherClass &weather,
+                                   const CalendarPageSnapshot &calendarSnapshot,
+                                   const AppConfig &cfg,
+                                   const String &localIP,
+                                   const calm_grid::ChromeContext &chrome);
 
-    // 2b-vi. Light-sleep interactive window; BOOT=next, USER=previous.
-    static PageId _runInteractiveWindow(IBoard &board, PageManager &pageManager,
-                                        WeatherClass &weather, const AppConfig &cfg,
-                                        const String &localIP);
+    // 2b-vi. Awake interactive window; BOOT=next, USER=previous.
+    static DisplayPageState _runInteractiveWindow(IBoard &board, PageManager &pageManager,
+                                                  DisplayPageState currentPage,
+                                                  WeatherClass &weather,
+                                                  const CalendarPageSnapshot &calendarSnapshot,
+                                                  const AppConfig &cfg,
+                                                  const String &localIP);
 
     // 2b-vii. Power-on config window (PortalSec > 0): web portal + buttons.
-    static PageId _runConfigWindow(IBoard &board, PageManager &pageManager,
-                                   WeatherClass &weather, const AppConfig &cfg,
-                                   const String &localIP);
+    static DisplayPageState _runConfigWindow(IBoard &board, PageManager &pageManager,
+                                             DisplayPageState currentPage,
+                                             WeatherClass &weather,
+                                             const CalendarPageSnapshot &calendarSnapshot,
+                                             const AppConfig &cfg,
+                                             const String &localIP);
+    static DisplayPageState _runFocusClockSession(IBoard &board, PageManager &pageManager,
+                                                  DisplayPageState currentPage,
+                                                  WeatherClass &weather,
+                                                  const CalendarPageSnapshot &calendarSnapshot,
+                                                  const AppConfig &cfg,
+                                                  const String &localIP);
 
     // Utility: draw a full-screen error message on the EPD.
     static void _showErrorPage(IBoard &board, const char *title, const char *msg);
 
     // Utility: persist current page, shut radios/peripherals down, then enter deep sleep.
-    static void _enterScheduledSleep(IBoard &board, uint64_t deepSleepUs, PageId currentPage);
+    static void _enterScheduledSleep(IBoard &board, uint64_t deepSleepUs,
+                                     DisplayPageState currentPage);
 };

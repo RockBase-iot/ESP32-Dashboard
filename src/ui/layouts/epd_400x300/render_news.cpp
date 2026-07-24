@@ -38,9 +38,12 @@ void drawNewsHistoryCard(IDrawSurface &surface, const Rect &rect, const NewsItem
 }
 
 void renderNewsLayout(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
-                      const std::string &headerTitle, size_t pageNumber, size_t pageCount) {
+                      const std::string &headerTitle, size_t pageNumber, size_t pageCount,
+                      const std::string &ipText, calm_grid::ChromeContext chrome) {
     calm_grid::drawPrototypePageChrome(surface, headerTitle, calm_grid::PageIconKind::News,
-                                       pageNumber, pageCount);
+                                       pageNumber, pageCount, chrome.timeText,
+                                       ipText.empty() ? chrome.ipText : ipText,
+                                       chrome.batteryText);
     surface.drawRect(18, 62, 364, 50, kDashboardBlack);
     surface.drawText(26, 75, "TOP STORIES", kDashboardAccent, TextAlign::Left, 1);
     surface.drawLine(26, 86, 374, 86, kDashboardBlack);
@@ -51,6 +54,9 @@ void renderNewsLayout(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
         // surface.drawText(28, 120,
         //                  calm_grid::fitText(surface, snapshot.headlines.front().detail, 340, 1),
         //                  kDashboardBlack, TextAlign::Left, 1);
+    } else {
+        surface.drawText(28, 98, "NO HEADLINES", kDashboardAccent, TextAlign::Left, 1);
+        surface.drawText(28, 110, "Check RSS/Atom feeds", kDashboardBlack, TextAlign::Left, 1);
     }
 
     const std::array<Rect, 3> rows = {{{18, 120, 364, 30},
@@ -82,11 +88,14 @@ NewsPageSnapshot sampleNewsPageSnapshot() {
 }
 
 void renderHeadlinesPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
-                         size_t pageNumber, size_t pageCount) {
-    renderNewsLayout(surface, snapshot, "HEADLINES", pageNumber, pageCount);
+                         size_t pageNumber, size_t pageCount, const std::string &ipText,
+                         calm_grid::ChromeContext chrome) {
+    renderNewsLayout(surface, snapshot, "HEADLINES", pageNumber, pageCount, ipText, chrome);
 }
 
 void renderTodayInHistoryPage(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
-                              size_t pageNumber, size_t pageCount) {
-    renderNewsLayout(surface, snapshot, "TODAY IN HISTORY", pageNumber, pageCount);
+                              size_t pageNumber, size_t pageCount, const std::string &ipText,
+                              calm_grid::ChromeContext chrome) {
+    renderNewsLayout(surface, snapshot, "TODAY IN HISTORY", pageNumber, pageCount, ipText,
+                     chrome);
 }

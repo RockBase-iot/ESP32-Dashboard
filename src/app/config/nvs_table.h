@@ -30,6 +30,17 @@
 #define NVS_KEY_TIME_ZONE_ID     "TzId"
 #define NVS_KEY_CURRENT_PAGE     "CurPage"
 #define NVS_KEY_PORTAL_WINDOW    "PortalSec"
+#define NVS_KEY_NEWS_FEEDS       "NewsFeeds"
+#define NVS_KEY_STOCK_SYMBOLS    "StockSyms"
+#define NVS_KEY_PORTFOLIO_POS    "PortPos"
+#define NVS_KEY_ECONOMIC_FEEDS   "EconFeeds"
+#define NVS_KEY_WORLD_ZONES      "WorldZones"
+#define NVS_KEY_FOCUS_LABEL      "FocusName"
+#define NVS_KEY_FOCUS_MINUTES    "FocusMin"
+#define NVS_KEY_FOCUS_BREAK_MIN  "FocusBreak"
+#define NVS_KEY_FOCUS_SESSIONS   "FocusCycles"
+#define NVS_KEY_INDOOR_ENABLED   "IndoorEn"
+#define NVS_KEY_INDOOR_ROOM      "IndoorRoom"
 
 // ─── Default values (used when NVS key is absent) ─────────────────────────
 // Open-Meteo is fully free and requires no API key.
@@ -54,3 +65,14 @@
 #define DEFAULT_PAGE_TEMPLATE    0
 #define DEFAULT_ROTATE_MINUTES   0
 #define DEFAULT_PORTAL_WINDOW_SEC 30      // power-on config window; 0 = disabled
+#define DEFAULT_NEWS_FEEDS       "https://feeds.bbci.co.uk/news/rss.xml,https://hnrss.org/frontpage,https://www.nasa.gov/rss/dyn/breaking_news.rss"
+#define DEFAULT_STOCK_SYMBOLS    "AAPL.US,MSFT.US,BTCUSD"
+#define DEFAULT_PORTFOLIO_POS    ""
+#define DEFAULT_ECONOMIC_FEEDS   ""
+#define DEFAULT_WORLD_ZONES      "Shanghai|Asia/Shanghai,New York|America/New_York,London|Europe/London,Tokyo|Asia/Tokyo"
+#define DEFAULT_FOCUS_LABEL      "Focus"
+#define DEFAULT_FOCUS_MINUTES    25
+#define DEFAULT_FOCUS_BREAK_MIN  5
+#define DEFAULT_FOCUS_SESSIONS   4
+#define DEFAULT_INDOOR_ENABLED   false
+#define DEFAULT_INDOOR_ROOM      "Indoor"

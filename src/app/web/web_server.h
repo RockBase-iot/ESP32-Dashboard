@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+inline constexpr const char *kWebAssetsPartitionLabel = "littlefs";
+
 // WebServer — lightweight HTTP config portal running in Station mode.
 //
 // Start this AFTER WiFi connects (in STA mode, not AP).

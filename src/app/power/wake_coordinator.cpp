@@ -12,7 +12,7 @@ PowerDecision WakeCoordinator::decide(const WakeInputs &input) const {
 
     if (input.currentState == PowerState::Interactive) {
         if (input.signal == WakeSignal::Inactivity &&
-            input.secondsSinceActivity >= kInteractiveIdleSeconds) {
+            input.secondsSinceActivity >= input.interactiveIdleSeconds) {
             decision.nextState = PowerState::DeepSleep;
         }
         return decision;

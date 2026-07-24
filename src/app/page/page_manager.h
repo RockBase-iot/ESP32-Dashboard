@@ -47,6 +47,7 @@ public:
     size_t autoCursor() const { return _autoCursor; }
     size_t pageCount() const;
     size_t pageNumber(PageId id) const;
+    PageId firstPage() const;
     std::vector<PageId> rotationQueue() const;
 
     PageId nextManual();

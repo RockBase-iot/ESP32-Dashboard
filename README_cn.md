@@ -99,10 +99,15 @@ cd ESP32-Dashboard
 
 ```bash
 # NM Display 420（ESP32-S3，4.2" 三色墨水屏）
-pio run -e nm-display-420 -t upload
+pio run -e nm-display-420 -t upload_all
 ```
 
-LittleFS 文件系统镜像（Web 页面 HTML）由 `extra_script_fs.py` 自动打包并烧录。
+`upload_all` 会先上传固件，生成压缩后的网页资源，再上传包含 Web 配置界面的
+LittleFS 文件系统。如果网页提示 `Web assets not uploaded`，请重新执行完整烧录：
+
+```bash
+pio run -e nm-display-420 -t upload_all --upload-port <PORT>
+```
 
 ### 4. 首次配置（AP 模式）
 

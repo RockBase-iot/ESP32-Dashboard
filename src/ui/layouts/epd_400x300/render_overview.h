@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "ui/canvas/draw_surface.h"
+#include "ui/components/calm_grid.h"
 
 struct CalendarDayCell {
     std::string text;
@@ -27,8 +27,11 @@ struct CalendarEventLine {
 struct CalendarPageSnapshot {
     std::string title;
     std::string subtitle;
+    std::string dateTitle;
+    std::string weekRangeLabel;
     std::vector<CalendarEventLine> overviewItems;
     std::vector<CalendarEventLine> timelineItems;
+    std::vector<CalendarDayCell> weekCells;
     std::vector<CalendarDayCell> monthCells;
     std::vector<std::string> agendaItems;
     std::vector<std::string> notes;
@@ -37,4 +40,6 @@ struct CalendarPageSnapshot {
 
 CalendarPageSnapshot sampleCalendarPageSnapshot();
 void renderOverviewPage(IDrawSurface &surface, const CalendarPageSnapshot &snapshot,
-                        size_t pageNumber = 1, size_t pageCount = 8);
+                        size_t pageNumber = 1, size_t pageCount = 8,
+                        const std::string &ipText = "IP: --",
+                        calm_grid::ChromeContext chrome = calm_grid::ChromeContext());

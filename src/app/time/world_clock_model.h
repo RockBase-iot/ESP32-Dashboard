@@ -22,6 +22,7 @@ struct WorldClockSlot {
     std::string timezoneId;
     std::string timeText;
     std::string dateText;
+    std::string statusText;
     int dayDelta = 0;
 };
 
@@ -32,5 +33,10 @@ struct WorldClockModel {
 };
 
 WorldClockConfig sampleWorldClockConfig();
+WorldClockConfig worldClockConfigFromZonesText(const std::string &zonesText,
+                                               const std::string &focusLabel = "",
+                                               bool twentyFourHour = true);
 WorldClockModel buildWorldClock(const WorldClockConfig &config, int64_t nowUtc);
 std::string formatWorldClockDateLabel(int64_t nowUtc, const std::string &timezoneId);
+std::string formatWorldClockChromeTimeLabel(int64_t nowUtc, const std::string &timezoneId,
+                                            bool twentyFourHour = true);

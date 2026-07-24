@@ -20,7 +20,8 @@ bool contains(const std::string &text, const char *needle) {
 
 std::string redactKeyValueForLog(const std::string &key, const std::string & /*value*/) {
     if (contains(key, "pswd") || contains(key, "password") || contains(key, "secret") ||
-        contains(key, "token")) {
+        contains(key, "token") || contains(key, "url") || contains(key, "apikey") ||
+        contains(key, "portfolio") || contains(key, "portpos") || contains(key, "feed")) {
         return "<redacted>";
     }
     return "<configured>";

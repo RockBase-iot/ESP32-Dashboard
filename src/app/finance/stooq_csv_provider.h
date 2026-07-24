@@ -7,6 +7,8 @@
 
 FinanceQuoteSet parseStooqCsvQuotes(const std::string &csv, const std::string &source,
                                     int64_t fallbackAsOfUtc);
+std::string buildStooqCsvUrl(const std::string &symbolsText);
+std::string buildStooqCsvUrlForHost(const std::string &host, const std::string &symbolsText);
 
 class StooqCsvProvider final : public IProvider {
 public:

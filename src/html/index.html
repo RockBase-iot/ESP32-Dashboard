@@ -3,590 +3,700 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ESP32 Dashboard Config</title>
+<title>RockBase IoT Dashboard Setup</title>
 <style>
-/* === Reset & Base === */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 16px; height: 100%; }
-body { font-family: 'Segoe UI', Arial, sans-serif; color: #fff; background: #1a1a2e; min-height: 100vh; -webkit-font-smoothing: antialiased; }
-a { text-decoration: none; color: #4CAF50; }
-
-/* === Page visibility === */
+:root {
+  --rb-bg: #111820;
+  --rb-surface-strong: #1b252e;
+  --rb-surface: #252f38;
+  --rb-surface-soft: #2e3a45;
+  --rb-primary: #009494;
+  --rb-primary-hover: #00a4a4;
+  --rb-text: #e1e4e8;
+  --rb-muted: #9aa7b2;
+  --rb-border: #00949426;
+  --rb-grid: #00949414;
+  --rb-warning: #ff7e67;
+  --rb-danger: #ff4d4f;
+  --rb-success: #25c2a0;
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; margin: 0; }
+body {
+  font-family: Inter, "Noto Sans SC", "Segoe UI", system-ui, sans-serif;
+  color: var(--rb-text);
+  background:
+    linear-gradient(var(--rb-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rb-grid) 1px, transparent 1px),
+    var(--rb-bg);
+  background-size: 28px 28px;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+.app { min-height: 100vh; display: grid; grid-template-columns: 232px 1fr; }
+.top {
+  position: fixed; left: 0; top: 0; right: 0; height: 64px; z-index: 20;
+  display: flex; align-items: center; gap: 18px; padding: 0 22px;
+  background: rgba(27, 37, 46, 0.96); border-bottom: 1px solid var(--rb-border);
+  backdrop-filter: blur(8px);
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 210px; }
+.brand-mark { width: 34px; height: 34px; border: 1px solid var(--rb-primary); display: grid; place-items: center; border-radius: 7px; color: var(--rb-primary); }
+.brand-title { font-weight: 800; letter-spacing: 0; line-height: 1.05; }
+.brand-sub { color: var(--rb-muted); font-size: 12px; margin-top: 2px; }
+.top-status { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; justify-content: flex-end; }
+.pill { border: 1px solid var(--rb-border); color: var(--rb-muted); padding: 6px 9px; border-radius: 7px; font-size: 12px; background: #111820a8; }
+.pill strong { color: var(--rb-text); }
+.hamb { display: none; background: transparent; border: 1px solid var(--rb-border); color: var(--rb-text); border-radius: 6px; width: 36px; height: 36px; }
+.side {
+  position: fixed; top: 64px; left: 0; bottom: 0; width: 232px; padding: 14px 10px;
+  background: rgba(27, 37, 46, 0.98); border-right: 1px solid var(--rb-border);
+}
+.nav { display: grid; gap: 5px; }
+.nav button {
+  width: 100%; border: 0; background: transparent; color: var(--rb-muted);
+  border-radius: 7px; padding: 11px 12px; display: flex; align-items: center; gap: 10px; text-align: left;
+}
+.nav button:hover { color: var(--rb-text); background: #2e3a4573; }
+.nav button.active { color: #fff; background: #00949424; box-shadow: inset 3px 0 0 var(--rb-primary); }
+.ico { width: 18px; height: 18px; flex: 0 0 18px; }
+.main { margin-left: 232px; padding: 92px 28px 42px; max-width: 1240px; }
 .page { display: none; }
 .page.active { display: block; }
-
-/* === Placeholder Pages === */
-.placeholder-page { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 50vh; color: #555; }
-.placeholder-page .ph-icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.4; }
-.placeholder-page .ph-title { font-size: 1.5rem; color: #8e8ea0; margin-bottom: 0.5rem; }
-.placeholder-page .ph-desc { font-size: 0.9rem; color: #555; }
-
-/* === Toast Notification === */
-.toast-container { position: fixed; bottom: 12px; right: 12px; z-index: 99999; pointer-events: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.ngx-toastr { position: relative; overflow: hidden; width: 300px; border-radius: 6px; padding: 14px 30px 14px 48px; background-position: 14px center; background-repeat: no-repeat; background-size: 22px; box-shadow: 0 0 12px rgba(0,0,0,0.6); color: #fff; pointer-events: auto; opacity: 0; transform: translateX(40px); transition: opacity 0.3s ease, transform 0.3s ease; }
-.ngx-toastr.toast-in { opacity: 0.95; transform: translateX(0); }
-.ngx-toastr.toast-out { opacity: 0; transform: translateX(40px); }
-.toast-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 3px; }
-.toast-detail { font-size: 0.82rem; opacity: 0.88; line-height: 1.4; word-break: break-word; }
-.toast-close-btn { position: absolute; right: 7px; top: 5px; background: transparent; border: none; color: #fff; font-size: 16px; cursor: pointer; opacity: 0.6; line-height: 1; }
-.toast-close-btn:hover { opacity: 1; }
-.toast-progress { position: absolute; left: 0; bottom: 0; height: 4px; background: rgba(0,0,0,0.3); }
-.ngx-toastr.toast-success { background-color: #51A351; }
-.ngx-toastr.toast-error { background-color: #BD362F; }
-.ngx-toastr.toast-info { background-color: #2F96B4; }
-.ngx-toastr.toast-warning { background-color: #F89406; }
-
-/* === Layout Wrapper === */
-.layout-wrapper { min-height: 100vh; display: flex; flex-direction: column; }
-
-/* === Top Bar === */
-.layout-topbar { position: fixed; top: 0; left: 0; right: 0; height: 4rem; background: linear-gradient(135deg, #1a1a2e 0%, #2a2a3e 100%); border-bottom: 1px solid #333; display: flex; align-items: center; padding: 0 1.5rem; z-index: 200; box-shadow: 0 2px 12px rgba(0,0,0,0.3); gap: 0.75rem; }
-.topbar-menu-btn { display: none; background: none; border: 1px solid #555; border-radius: 6px; color: #fff; font-size: 1.3rem; padding: 5px 9px; cursor: pointer; }
-.topbar-menu-btn:hover { background: #333; border-color: #4CAF50; }
-.topbar-logo { display: flex; align-items: center; gap: 6px; }
-.topbar-logo .logo-text { font-size: 1.6rem; font-weight: 900; color: #4CAF50; letter-spacing: 1px; }
-.topbar-logo .logo-sub { font-size: 1rem; color: #aaa; font-weight: 300; }
-.topbar-info { display: flex; align-items: center; gap: 1rem; margin-left: auto; font-size: 0.85rem; color: #aaa; }
-.btn-restart-topbar { background: linear-gradient(135deg, #1565C0, #1E88E5); color: #fff; border: none; padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; white-space: nowrap; transition: all 0.2s; }
-.btn-restart-topbar:hover { background: linear-gradient(135deg, #1E88E5, #42A5F5); transform: translateY(-1px); }
-
-/* === Sidebar === */
-.layout-sidebar { position: fixed; top: 4rem; left: 0; bottom: 0; width: 220px; background: linear-gradient(180deg, #1e1e32 0%, #16162a 100%); border-right: 1px solid #2a2a3e; overflow-y: auto; z-index: 100; transition: transform 0.3s ease; }
-.layout-sidebar::-webkit-scrollbar { width: 4px; }
-.layout-sidebar::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
-.layout-menu { list-style: none; padding: 0.5rem 0; }
-.layout-menu li { margin: 2px 8px; }
-.layout-menu li a { display: flex; align-items: center; gap: 10px; padding: 0.7rem 1rem; color: #8e8ea0; border-radius: 8px; transition: all 0.2s; font-size: 0.95rem; font-weight: 500; cursor: pointer; }
-.layout-menu li a:hover { background: rgba(76,175,80,0.1); color: #fff; }
-.layout-menu li a.active { background: rgba(76,175,80,0.15); color: #4CAF50; font-weight: 700; border-left: 3px solid #4CAF50; }
-.menu-icon { font-size: 1.1rem; width: 24px; text-align: center; }
-.sidebar-footer { position: absolute; bottom: 0; left: 0; right: 0; padding: 0.75rem 1rem; border-top: 1px solid #2a2a3e; text-align: center; font-size: 0.75rem; color: #555; }
-
-/* === Main Content === */
-.layout-main-container { margin-left: 220px; margin-top: 4rem; min-height: calc(100vh - 4rem); padding: 1.5rem 2rem; }
-.layout-main { max-width: 860px; width: 100%; }
-
-/* === Mobile Overlay === */
-.layout-mask { display: none; position: fixed; top: 4rem; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 99; }
-.layout-mask.active { display: block; }
-
-/* === Responsive === */
-@media (max-width: 991px) {
-  .layout-sidebar { transform: translateX(-100%); }
-  .layout-sidebar.open { transform: translateX(0); z-index: 150; }
-  .layout-main-container { margin-left: 0; }
-  .topbar-menu-btn { display: flex; }
-  .layout-topbar { padding: 0 1rem; }
+.hero { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 18px; }
+h1 { font-size: 30px; line-height: 1.12; margin: 0 0 6px; letter-spacing: 0; }
+.lead { margin: 0; color: var(--rb-muted); max-width: 760px; line-height: 1.5; }
+.actions { display: flex; flex-wrap: wrap; gap: 9px; justify-content: flex-end; }
+.btn {
+  border: 1px solid var(--rb-border); color: var(--rb-text); background: var(--rb-surface);
+  border-radius: 7px; min-height: 36px; padding: 8px 13px; display: inline-flex; align-items: center; gap: 7px;
 }
-@media (max-width: 576px) {
-  .layout-main-container { padding: 1rem; }
+.btn.primary { background: var(--rb-primary); border-color: var(--rb-primary); color: #fff; font-weight: 700; }
+.btn:hover { border-color: var(--rb-primary-hover); }
+.btn.primary:hover { background: var(--rb-primary-hover); }
+.btn.danger { color: #fff; border-color: #ff4d4f66; background: #3a2228; }
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+.span-12 { grid-column: span 12; }
+.span-8 { grid-column: span 8; }
+.span-6 { grid-column: span 6; }
+.span-4 { grid-column: span 4; }
+.panel {
+  background: linear-gradient(180deg, #252f38f5, #1b252ef5);
+  border: 1px solid var(--rb-border); border-radius: 8px; overflow: hidden;
 }
-
-/* === Card === */
-.card { background: linear-gradient(135deg, #22223a, #2a2a44); border: 1px solid #333355; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); margin-bottom: 1.25rem; }
-.card-title { display: flex; align-items: center; gap: 0.5rem; font-size: 1.05rem; font-weight: 700; color: #fff; padding: 1rem 1.25rem; border-bottom: 1px solid #333355; margin: 0; }
-.card-icon { font-size: 1.1rem; }
-.card-body { padding: 1.25rem; }
-.card-footer { display: flex; justify-content: flex-start; padding: 0.75rem 1.25rem; border-top: 1px solid #333355; }
-
-/* === Save Button === */
-.btn-save { background: linear-gradient(135deg, #4CAF50, #45a049); color: #fff; border: none; padding: 0.5rem 1.5rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 700; transition: all 0.2s; }
-.btn-save:hover:not(:disabled) { background: linear-gradient(135deg, #45a049, #3d8b40); transform: translateY(-1px); box-shadow: 0 3px 10px rgba(76,175,80,0.3); }
-.btn-save:disabled { background: linear-gradient(135deg, #555, #444); color: #888; cursor: not-allowed; }
-
-/* === Settings Form Fields === */
-.field-grid { display: flex; align-items: center; margin-bottom: 0.85rem; }
-.field-grid:last-child { margin-bottom: 0; }
-.field-label { width: 170px; min-width: 170px; color: #b0b0c0; font-size: 0.88rem; font-weight: 600; padding-right: 1rem; flex-shrink: 0; }
-.field-hint { font-size: 0.75rem; color: #666; margin-top: 2px; }
-.field-input, .field-select { flex: 1; padding: 0.55rem 0.75rem; border: 1px solid #444466; border-radius: 6px; background: #16162a; color: #fff; font-size: 0.88rem; transition: border-color 0.2s; }
-.field-input:focus, .field-select:focus { outline: none; border-color: #4CAF50; box-shadow: 0 0 0 2px rgba(76,175,80,0.15); }
-.field-input::placeholder { color: #555; }
-.field-select { appearance: auto; }
-
-/* === Page Title (screen reader only) === */
-.page-title { display: none; }
-
-@media (max-width: 576px) {
-  .field-grid { flex-direction: column; align-items: flex-start; gap: 4px; }
-  .field-label { width: auto; min-width: auto; padding-right: 0; }
-  .field-input, .field-select { width: 100%; }
+.panel-head { padding: 14px 16px; border-bottom: 1px solid var(--rb-border); display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.panel-title { font-weight: 800; display: flex; gap: 9px; align-items: center; }
+.panel-body { padding: 16px; }
+.stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat { background: #111820b3; border: 1px solid var(--rb-border); border-radius: 7px; padding: 12px; }
+.stat .num { font-size: 22px; font-weight: 800; color: #fff; }
+.stat .label { font-size: 12px; color: var(--rb-muted); margin-top: 3px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 840px; }
+th, td { padding: 10px 9px; border-bottom: 1px solid #ffffff12; text-align: left; vertical-align: middle; }
+th { color: var(--rb-muted); font-size: 12px; font-weight: 700; background: #11182066; }
+td { font-size: 14px; }
+.page-name { font-weight: 800; color: #fff; }
+.sub { display: block; color: var(--rb-muted); font-size: 12px; margin-top: 2px; }
+.status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 8px; font-size: 12px; border: 1px solid currentColor; }
+.status.Ready { color: var(--rb-success); }
+.status.Required { color: var(--rb-danger); }
+.status.Optional { color: var(--rb-warning); }
+.status.Error { color: var(--rb-danger); }
+.toggle { width: 18px; height: 18px; accent-color: var(--rb-primary); }
+.mini-actions { display: flex; gap: 6px; }
+.icon-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--rb-border); background: #111820; color: var(--rb-text); }
+.form-grid { display: grid; grid-template-columns: 180px 1fr; gap: 11px 14px; align-items: center; }
+label { color: var(--rb-muted); font-weight: 700; font-size: 13px; }
+input, select, textarea {
+  width: 100%; border: 1px solid #48606f; border-radius: 7px; background: #10171e; color: var(--rb-text);
+  padding: 9px 10px; outline: none;
 }
-
-/* === City Search Dropdown === */
-.city-dropdown { background: #1a1a2e; border: 1px solid #444466; border-radius: 6px; max-height: 240px; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,0.6); }
-.city-dropdown::-webkit-scrollbar { width: 4px; }
-.city-dropdown::-webkit-scrollbar-thumb { background: #444466; border-radius: 2px; }
-.city-item { padding: 0.6rem 0.75rem; cursor: pointer; font-size: 0.85rem; color: #ccc; border-bottom: 1px solid #2a2a44; }
-.city-item:last-child { border-bottom: none; }
-.city-item:hover { background: #2a2a4a; color: #fff; }
-
+textarea { min-height: 92px; resize: vertical; line-height: 1.45; }
+input:focus, select:focus, textarea:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 2px #00949430; }
+.source-card { display: block; }
+.source-card.hidden-by-pages { display: none; }
+.hint { color: var(--rb-muted); font-size: 12px; line-height: 1.45; margin: 8px 0 0; }
+.guide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.guide-card { background: #11182099; border: 1px solid #ffffff12; border-radius: 7px; padding: 12px; }
+.guide-card h3 { margin: 0 0 8px; font-size: 15px; }
+.guide-card p { margin: 0 0 8px; color: var(--rb-muted); line-height: 1.45; font-size: 13px; }
+.guide-card ul { margin: 0; padding-left: 18px; color: var(--rb-muted); line-height: 1.5; font-size: 13px; }
+.field-note { grid-column: 2; margin: -5px 0 3px; color: var(--rb-muted); font-size: 12px; line-height: 1.4; }
+.zone-rows { grid-column: 2; display: grid; gap: 8px; }
+.zone-row { display: grid; grid-template-columns: 1.05fr 1fr 1.25fr; gap: 8px; align-items: center; }
+.zone-row input, .zone-row select { min-width: 0; }
+.required-dot { color: var(--rb-warning); font-weight: 800; }
+.result {
+  border: 1px solid var(--rb-border); background: #111820b8; border-radius: 7px; padding: 10px 12px;
+  color: var(--rb-muted); min-height: 40px; line-height: 1.4;
+}
+.toast-zone { position: fixed; right: 18px; bottom: 18px; z-index: 50; display: grid; gap: 8px; }
+.toast { width: min(360px, calc(100vw - 32px)); background: #1b252e; border: 1px solid var(--rb-border); border-left: 4px solid var(--rb-primary); border-radius: 7px; padding: 12px; box-shadow: 0 14px 35px #0009; }
+.toast.error { border-left-color: var(--rb-danger); }
+.toast-title { font-weight: 800; margin-bottom: 4px; }
+.toast-msg { color: var(--rb-muted); font-size: 13px; line-height: 1.4; }
+@media (max-width: 900px) {
+  .app { display: block; }
+  .hamb { display: inline-grid; place-items: center; }
+  .side { transform: translateX(-105%); transition: transform .2s; z-index: 30; }
+  .side.open { transform: translateX(0); }
+  .main { margin-left: 0; padding: 86px 16px 30px; }
+  .hero { flex-direction: column; }
+  .span-8, .span-6, .span-4 { grid-column: span 12; }
+  .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form-grid { grid-template-columns: 1fr; }
+  .guide-grid { grid-template-columns: 1fr; }
+  .field-note { grid-column: 1; }
+  .zone-rows { grid-column: 1; }
+  .zone-row { grid-template-columns: 1fr; }
+  .top-status { display: none; }
+}
 </style>
 </head>
 <body>
-<div class="layout-wrapper">
-
-<!-- === Top Bar === -->
-<div class="layout-topbar">
-  <button class="topbar-menu-btn" onclick="toggleSidebar()">&#9776;</button>
-  <div class="topbar-logo">
-    <span class="logo-text">ESP32</span>
-    <span class="logo-sub">Dashboard</span>
-  </div>
-  <div class="topbar-info" id="topbarInfo"></div>
-  <button class="btn-restart-topbar" onclick="restartLocalDevice()" title="Restart device">&#x1F504; Restart</button>
-</div>
-
-<!-- === Sidebar === -->
-<div class="layout-sidebar" id="sidebar">
-  <ul class="layout-menu">
-    <li><a data-page="settings" class="nav-link active" onclick="switchPage('settings',this)"><span class="menu-icon">&#x2699;&#xFE0F;</span>Settings</a></li>
-    <li><a data-page="logs" class="nav-link" onclick="switchPage('logs',this)"><span class="menu-icon">&#x1F4CB;</span>Logs</a></li>
-  </ul>
-  <div class="sidebar-footer">ESP32 Dashboard</div>
-</div>
-
-<!-- === Mobile overlay === -->
-<div class="layout-mask" id="layoutMask" onclick="toggleSidebar()"></div>
-
-<!-- === Main Content === -->
-<div class="layout-main-container"><div class="layout-main">
-
-
-<!-- ====== Settings Page ====== -->
-<div id="page-settings" class="page active">
-<h1 class="page-title">Settings</h1>
-
-<!-- WiFi Card -->
-<div class="card">
-  <h2 class="card-title"><span class="card-icon">&#x1F4E1;</span>WiFi</h2>
-  <div class="card-body">
-    <div class="field-grid">
-      <span class="field-label">SSID</span>
-      <input class="field-input" type="text" id="s_WifiSSID" autocomplete="off" placeholder="Network name">
+<div class="top">
+  <button class="hamb" onclick="toggleSidebar()" aria-label="Menu">Menu</button>
+  <div class="brand">
+    <div class="brand-mark">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M7 4v16M17 4v16M4 17h16"/></svg>
     </div>
-    <div class="field-grid">
-      <span class="field-label">Password</span>
-      <div style="position:relative;flex:1;min-width:0;">
-        <input class="field-input" type="password" id="s_WifiPSWD" autocomplete="new-password"
-               style="width:100%;box-sizing:border-box;padding-right:2.4rem;"
-               onfocus="this.select()" oninput="onPwdInput(this)">
-        <button type="button" id="pwdEyeBtn" onclick="togglePwdVisibility()"
-                style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#aaa;font-size:1.1rem;padding:0;line-height:1;"
-                title="Toggle password visibility">&#x1F441;</button>
+    <div><div class="brand-title">RockBase IoT Dashboard</div><div class="brand-sub">NM-EPD-420 setup</div></div>
+  </div>
+  <div class="top-status" id="topStatus"></div>
+  <button class="btn danger" onclick="restartDevice()">Restart</button>
+</div>
+<aside class="side" id="side">
+  <nav class="nav">
+    <button class="active" data-page="pages" onclick="showPage('pages', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Pages</button>
+    <button data-page="sources" onclick="showPage('sources', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg>Data Sources</button>
+    <button data-page="device" onclick="showPage('device', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Device</button>
+    <button data-page="logs" onclick="showPage('logs', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>Logs</button>
+  </nav>
+</aside>
+<main class="main">
+  <section class="page active" id="page-pages">
+    <div class="hero">
+      <div>
+        <h1>Pages</h1>
+        <p class="lead">Choose what the e-paper dashboard displays. Page 0 is the legacy Weather Home and stays enabled for compatibility.</p>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="syncNow()">Sync Now</button>
+        <button class="btn primary" onclick="savePages()">Save Pages</button>
       </div>
     </div>
-  </div>
-  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('wifi')">Save</button></div>
-</div>
-
-<!-- Location Card -->
-<div class="card">
-  <h2 class="card-title"><span class="card-icon">&#x1F4CD;</span>Location</h2>
-  <div class="card-body">
-    <div class="field-grid">
-      <span class="field-label">City</span>
-      <div style="position:relative;flex:1;min-width:0;">
-        <input class="field-input" type="text" id="s_City" placeholder="Type city name to search..." autocomplete="off" oninput="searchCity(this.value)" style="width:100%;box-sizing:border-box;">
-        <div id="cityDropdown" class="city-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:100;"></div>
+    <div class="grid">
+      <div class="panel span-12">
+        <div class="panel-body stat-row" id="healthStats"></div>
+      </div>
+      <div class="panel span-12">
+        <div class="panel-head"><div class="panel-title">Display Order</div><div class="pill">Page 0 is fixed</div></div>
+        <div class="table-wrap"><table><thead><tr><th>Page</th><th>Status</th><th>Show</th><th>Rotate</th><th>Order</th><th>Action</th></tr></thead><tbody id="pageRows"></tbody></table></div>
+      </div>
+      <div class="panel span-12">
+        <div class="panel-head"><div class="panel-title">Required Setup</div><button class="btn" onclick="showPage('sources')">Open Sources</button></div>
+        <div class="panel-body" id="requiredSetup"></div>
       </div>
     </div>
-    <div class="field-grid">
-      <span class="field-label">Lat / Lon</span>
-      <input class="field-input" type="text" id="s_Lat" placeholder="Latitude" style="margin-right:6px;">
-      <input class="field-input" type="text" id="s_Lon" placeholder="Longitude">
-    </div>
-    <p class="field-hint">Can't find your city? Enter coordinates manually above. <a href="https://www.latlong.net/" target="_blank" style="color:#4FC3F7;">Latitude &amp; Longitude Finder &#x2197;</a></p>
-    <div class="field-grid" style="margin-top:0.85rem;">
-      <span class="field-label">Timezone</span>
-      <input class="field-input" type="number" id="s_Timezone" min="-14" max="14" placeholder="e.g. 8" title="UTC offset in hours. Examples: UTC+8 → enter 8, UTC-5 → enter -5, UTC+5:30 → enter 5 (half-hour zones not supported)">
-    </div>
-  </div>
-  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('location')">Save</button></div>
-</div>
+  </section>
 
-<!-- Schedule Card -->
-<div class="card">
-  <h2 class="card-title"><span class="card-icon">&#x23F0;</span>Schedule</h2>
-  <div class="card-body">
-    <div class="field-grid">
-      <span class="field-label">Refresh Interval <span style="color:#666;font-weight:400;font-size:0.8rem;">(minutes)</span></span>
-      <input class="field-input" type="number" id="s_SleepMin" min="1" max="1440" placeholder="1–1440">
+  <section class="page" id="page-sources">
+    <div class="hero">
+      <div>
+        <h1>Data Sources</h1>
+        <p class="lead">Sources needed by enabled pages are shown first. Already configured sources also stay visible so saved secrets can be checked without exposing their full value.</p>
+      </div>
+      <div class="actions"><button class="btn primary" onclick="reloadAll()">Reload</button></div>
     </div>
-    <div class="field-grid">
-      <span class="field-label">Bed Time (hour)</span>
-      <input class="field-input" type="number" id="s_BedTime" min="0" max="23" placeholder="0–23, display sleeps after this hour">
+    <div class="grid" id="sourceGrid">
+      <div class="panel span-12">
+        <div class="panel-head"><div class="panel-title">Source Guide / 数据源说明</div></div>
+        <div class="panel-body guide-grid">
+          <div class="guide-card">
+            <h3>English</h3>
+            <p>Enable pages first, then configure only the data sources those pages need. Defaults are used when available; required fields are shown only for data that cannot be inferred safely.</p>
+            <ul>
+              <li>Weather uses Open-Meteo by default. City, coordinates, and units can be changed; no API key is required.</li>
+              <li>Calendar pages require a direct ICS URL from Google, Outlook, Apple, or another calendar. Secrets are stored locally and only masked metadata is returned by GET APIs.</li>
+              <li>News has default RSS/Atom feeds: BBC, Hacker News, and NASA. Stock Watchlist defaults to Stooq CSV symbols such as AAPL.US, MSFT.US, and BTCUSD.</li>
+              <li>Economic Calendar requires a real RSS or ICS feed URL. Portfolio positions are user-owned sensitive data and are not echoed back by GET APIs.</li>
+              <li>World Clock and Focus Clock need no network source. Configure up to four city rows; empty rows are skipped.</li>
+              <li>Indoor Climate reads local sensor data when enabled. Leave disabled if the device has no sensor attached.</li>
+            </ul>
+          </div>
+          <div class="guide-card">
+            <h3>中文</h3>
+            <p>先在 Pages 中启用页面，再配置该页面真正需要的数据源。能使用默认公开数据的模块会自动工作；无法安全推断的数据会标为必填。</p>
+            <ul>
+              <li>天气默认使用 Open-Meteo。城市、经纬度和单位可以修改，不需要 API Key。</li>
+              <li>日历页面需要 Google、Outlook、Apple 或其他日历的直接 ICS URL。密钥只保存在设备本地，网页 GET 接口只返回脱敏信息。</li>
+              <li>新闻默认使用 BBC、Hacker News、NASA 的 RSS/Atom；股票默认使用 Stooq CSV，例如 AAPL.US、MSFT.US、BTCUSD。</li>
+              <li>经济日历需要真实 RSS 或 ICS Feed URL。投资组合是用户敏感数据，不会通过 GET 接口回显明文。</li>
+              <li>世界时钟和专注时钟不依赖外部数据源。最多配置四个城市行，空行不会显示。</li>
+              <li>室内环境依赖本地传感器；没有接入传感器时保持关闭即可。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="panel span-6 source-card" data-source-card="weather">
+        <div class="panel-head"><div class="panel-title">Weather</div></div>
+        <div class="panel-body form-grid">
+          <label>City</label><input id="w_City" placeholder="City, State, Country">
+          <div class="field-note">Default available / 有默认值；建议填写为 城市, 省/州, 国家。</div>
+          <label>Latitude</label><input id="w_Lat" placeholder="30.6667">
+          <div class="field-note">Default available / 有默认值；用于天气预报定位。</div>
+          <label>Longitude</label><input id="w_Lon" placeholder="104.0667">
+          <div class="field-note">Default available / 有默认值；用于天气预报定位。</div>
+          <label>Temperature</label><select id="w_UnitsTemp"><option value="C">Celsius</option><option value="F">Fahrenheit</option></select>
+          <label>Wind</label><select id="w_UnitsSpeed"><option value="kmh">km/h</option><option value="mph">mph</option><option value="ms">m/s</option><option value="kn">knots</option></select>
+          <label>Precipitation</label><select id="w_UnitsPrecip"><option value="mm">mm</option><option value="in">inches</option></select>
+          <div></div><button class="btn primary" onclick="saveSource('weather')">Save Weather</button>
+        </div>
+      </div>
+      <div class="panel span-6 source-card" data-source-card="calendar">
+        <div class="panel-head"><div class="panel-title">Calendar</div></div>
+        <div class="panel-body form-grid">
+          <label>Alias</label><input id="c_alias" placeholder="Work">
+          <div class="field-note">Optional name / 可选名称，用于区分工作、家庭等日历。</div>
+          <label><span class="required-dot">*</span> ICS URL</label><input id="c_url" placeholder="https://... or webcal://...">
+          <div class="field-note">Required when calendar pages are enabled. Leave blank when editing an existing source to keep the stored URL. / 启用日历类页面时必填；编辑已有源时留空表示保留已保存 URL。</div>
+          <label>API Key</label><input id="c_apiKey" type="password" placeholder="Optional">
+          <div class="field-note">Optional secret / 可选密钥；GET API 只返回脱敏信息。</div>
+          <label>Enabled</label><select id="c_enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select>
+          <div></div><button class="btn primary" onclick="saveSource('calendar')">Save Calendar Slot 0</button>
+          <div></div><p class="hint" id="calendarMeta">No calendar metadata loaded.</p>
+        </div>
+      </div>
+      <div class="panel span-6 source-card" data-source-card="news">
+        <div class="panel-head"><div class="panel-title">News</div></div>
+        <div class="panel-body form-grid"><label>RSS/Atom feeds</label><textarea id="n_feeds" placeholder="One URL per line or comma-separated"></textarea><div class="field-note">Default feeds are available. Fill this only when replacing the built-in BBC, Hacker News, and NASA feeds. / 有默认源；仅在需要替换默认新闻源时填写。</div><div></div><button class="btn primary" onclick="saveSource('news')">Save News</button></div>
+      </div>
+      <div class="panel span-6 source-card" data-source-card="finance">
+        <div class="panel-head"><div class="panel-title">Stock Watchlist</div></div>
+        <div class="panel-body form-grid"><label>Symbols</label><textarea id="f_symbols" placeholder="AAPL.US, MSFT.US, BTCUSD"></textarea><div class="field-note">Default symbols use Stooq public CSV. Fill this only when changing the watchlist. / 有默认 Stooq 代码；仅在需要修改自选列表时填写。</div><div></div><button class="btn primary" onclick="saveSource('finance')">Save Watchlist</button></div>
+      </div>
+      <div class="panel span-6 source-card" data-source-card="portfolio">
+        <div class="panel-head"><div class="panel-title">Portfolio</div></div>
+        <div class="panel-body form-grid"><label><span class="required-dot">*</span> Positions</label><textarea id="p_positions" placeholder="Sensitive. Example: AAPL:2:180:USD"></textarea><div class="field-note">Required when Portfolio is enabled / 启用投资组合页面时必填；持仓敏感数据不会通过 GET API 返回。</div><div></div><button class="btn primary" onclick="saveSource('portfolio')">Save Portfolio</button><div></div><p class="hint" id="portfolioMeta">Positions are not returned by GET APIs.</p></div>
+      </div>
+      <div class="panel span-6 source-card" data-source-card="economic">
+        <div class="panel-head"><div class="panel-title">Economic Calendar</div></div>
+        <div class="panel-body form-grid"><label><span class="required-dot">*</span> RSS/ICS feeds</label><textarea id="e_feeds" placeholder="https://example.com/economic.ics"></textarea><div class="field-note">Required when Economic Calendar is enabled. Public free feeds are scarce; host RSS/ICS yourself if needed. / 启用经济日历时需要真实 RSS/ICS URL；US、EU 等地区代码不会自动映射接口。</div><div></div><button class="btn primary" onclick="saveSource('economic')">Save Economic</button></div>
+      </div>
+      <div class="panel span-6 source-card" data-source-card="time">
+        <div class="panel-head"><div class="panel-title">World Clock</div></div>
+        <div class="panel-body form-grid">
+          <label>Home timezone</label><input id="t_TzId" placeholder="Asia/Shanghai">
+          <div class="field-note">Default available. Used by the page chrome date and time after sync. / 有默认值；同步时间后用于页眉日期时间。</div>
+          <label>World clock cities</label>
+          <div class="zone-rows" id="worldClockRows">
+            <div class="zone-row" data-zone-row="0"><select id="t_zone_city_0" onchange="applyWorldCity(0)"></select><input id="t_zone_label_0" placeholder="City label"><input id="t_zone_tz_0" placeholder="IANA timezone"></div>
+            <div class="zone-row" data-zone-row="1"><select id="t_zone_city_1" onchange="applyWorldCity(1)"></select><input id="t_zone_label_1" placeholder="City label"><input id="t_zone_tz_1" placeholder="IANA timezone"></div>
+            <div class="zone-row" data-zone-row="2"><select id="t_zone_city_2" onchange="applyWorldCity(2)"></select><input id="t_zone_label_2" placeholder="City label"><input id="t_zone_tz_2" placeholder="IANA timezone"></div>
+            <div class="zone-row" data-zone-row="3"><select id="t_zone_city_3" onchange="applyWorldCity(3)"></select><input id="t_zone_label_3" placeholder="City label"><input id="t_zone_tz_3" placeholder="IANA timezone"></div>
+          </div>
+          <div class="field-note">Choose a common city or select Custom and type the city/timezone manually. Empty rows are not displayed. / 可选择常见城市，也可选择 Custom 后手动填写；空行不会显示。</div>
+          <div></div><button class="btn primary" onclick="saveSource('time')">Save Time</button>
+        </div>
+      </div>
+      <div class="panel span-6 source-card" data-source-card="focus">
+        <div class="panel-head"><div class="panel-title">Focus Clock</div></div>
+        <div class="panel-body form-grid">
+          <label>Label</label><input id="fc_label" placeholder="Focus">
+          <div class="field-note">Optional display label. Defaults to Focus.</div>
+          <label>Focus minutes</label><input id="fc_focus_min" type="number" min="1" max="180" placeholder="25">
+          <div class="field-note">Main countdown duration. Default 25 minutes.</div>
+          <label>Break minutes</label><input id="fc_break_min" type="number" min="1" max="60" placeholder="5">
+          <div class="field-note">Next break duration. Default 5 minutes.</div>
+          <label>Sessions</label><input id="fc_sessions" type="number" min="1" max="12" placeholder="4">
+          <div class="field-note">Cycles shown as CYCLE n OF total. Default 4.</div>
+          <div></div><button class="btn primary" onclick="saveSource('focus')">Save Focus</button>
+        </div>
+      </div>
+      <div class="panel span-6 source-card" data-source-card="indoor">
+        <div class="panel-head"><div class="panel-title">Indoor Climate</div></div>
+        <div class="panel-body form-grid"><label>Sensor source</label><select id="i_enabled"><option value="false">Disabled</option><option value="true">Enabled</option></select><div class="field-note">Default disabled / 默认关闭；启用后读取本地传感器。</div><label>Room</label><input id="i_room" placeholder="Office"><div class="field-note">Optional display label / 可选房间名称。</div><div></div><button class="btn primary" onclick="saveSource('indoor')">Save Indoor</button></div>
+      </div>
+      <div class="panel span-12"><div class="panel-head"><div class="panel-title">Save / Sync Result</div></div><div class="panel-body"><div class="result" id="sourceResult">No result yet.</div></div></div>
     </div>
-    <div class="field-grid">
-      <span class="field-label">Wake Time (hour)</span>
-      <input class="field-input" type="number" id="s_WakeTime" min="0" max="23" placeholder="0–23, display wakes at this hour">
-    </div>
-    <div class="field-grid">
-      <span class="field-label">Config Window <span style="color:#666;font-weight:400;font-size:0.8rem;">(seconds)</span></span>
-      <input class="field-input" type="number" id="s_PortalSec" min="0" max="600" placeholder="0–600, portal stays online after each wake; 0 = off">
-    </div>
-  </div>
-  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('schedule')">Save</button></div>
-</div>
+  </section>
 
-<!-- Units Card -->
-<div class="card">
-  <h2 class="card-title"><span class="card-icon">&#x1F4CF;</span>Units</h2>
-  <div class="card-body">
-    <div class="field-grid">
-      <span class="field-label">Temperature</span>
-      <select class="field-select" id="s_UnitsTemp">
-        <option value="C">Celsius (°C)</option>
-        <option value="F">Fahrenheit (°F)</option>
-      </select>
+  <section class="page" id="page-device">
+    <div class="hero">
+      <div><h1>Device</h1><p class="lead">Network, schedule, units, and display settings. Saving offers an immediate restart so the new configuration can apply now.</p></div>
+      <div class="actions"><button class="btn primary" onclick="saveDevice()">Save Device</button></div>
     </div>
-    <div class="field-grid">
-      <span class="field-label">Wind Speed</span>
-      <select class="field-select" id="s_UnitsSpeed">
-        <option value="kmh">km/h</option>
-        <option value="mph">mph</option>
-        <option value="ms">m/s</option>
-        <option value="kn">knots</option>
-      </select>
+    <div class="grid">
+      <div class="panel span-6"><div class="panel-head"><div class="panel-title">WiFi</div></div><div class="panel-body form-grid"><label>SSID</label><input id="d_WifiSSID"><label>Password</label><input id="d_WifiPSWD" type="password" placeholder="Leave unchanged"></div></div>
+      <div class="panel span-6"><div class="panel-head"><div class="panel-title">Schedule</div></div><div class="panel-body form-grid"><label>Refresh minutes</label><input id="d_SleepMin" type="number" min="1"><label>Bed hour</label><input id="d_BedTime" type="number" min="0" max="23"><label>Wake hour</label><input id="d_WakeTime" type="number" min="0" max="23"><label>Config window sec</label><input id="d_PortalSec" type="number" min="0" max="600"></div></div>
+      <div class="panel span-6"><div class="panel-head"><div class="panel-title">Display</div></div><div class="panel-body form-grid"><label>Time format</label><select id="d_TimeFmt"><option value="%H:%M">24-hour</option><option value="%I:%M %p">12-hour</option></select><label>Date format</label><select id="d_DateFmt"><option value="%a, %B %e">Mon, July 20</option><option value="%Y/%m/%d">2026/07/20</option><option value="%Y-%m-%d">2026-07-20</option></select><label>Language</label><select id="d_Language"><option value="en_US">English</option><option value="zh_CN">Chinese</option></select></div></div>
+      <div class="panel span-6"><div class="panel-head"><div class="panel-title">Units</div></div><div class="panel-body form-grid"><label>Temperature</label><select id="d_UnitsTemp"><option value="C">Celsius</option><option value="F">Fahrenheit</option></select><div class="field-note">Applies to Weather Home, Weather Today, Weekly Weather, and Indoor Climate / 同步所有温度页面。</div><label>Pressure</label><select id="d_UnitsPres"><option value="hPa">hPa</option><option value="inHg">inHg</option><option value="mmHg">mmHg</option></select><label>Distance</label><select id="d_UnitsDist"><option value="km">km</option><option value="mi">miles</option></select></div></div>
     </div>
-    <div class="field-grid">
-      <span class="field-label">Pressure</span>
-      <select class="field-select" id="s_UnitsPres">
-        <option value="hPa">hPa</option>
-        <option value="inHg">inHg</option>
-        <option value="mmHg">mmHg</option>
-      </select>
-    </div>
-    <div class="field-grid">
-      <span class="field-label">Distance</span>
-      <select class="field-select" id="s_UnitsDist">
-        <option value="km">km</option>
-        <option value="mi">miles</option>
-      </select>
-    </div>
-    <div class="field-grid">
-      <span class="field-label">Precipitation</span>
-      <select class="field-select" id="s_UnitsPrecip">
-        <option value="mm">mm</option>
-        <option value="in">inches</option>
-      </select>
-    </div>
-  </div>
-  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('units')">Save</button></div>
-</div>
+  </section>
 
-<!-- Display Card -->
-<div class="card">
-  <h2 class="card-title"><span class="card-icon">&#x1F5A5;&#xFE0F;</span>Display</h2>
-  <div class="card-body">
-    <div class="field-grid">
-      <span class="field-label">Time Format</span>
-      <select class="field-select" id="s_TimeFmt">
-        <option value="%H:%M">24-hour &nbsp;(14:30)</option>
-        <option value="%I:%M %p">12-hour &nbsp;(02:30 PM)</option>
-      </select>
-    </div>
-    <div class="field-grid">
-      <span class="field-label">Date Format</span>
-      <select class="field-select" id="s_DateFmt">
-        <option value="%a, %B %e">Tue, April 5</option>
-        <option value="%Y/%m/%d">2026/04/23</option>
-        <option value="%Y-%m-%d">2026-04-23</option>
-        <option value="%d/%m/%Y">23/04/2026</option>
-        <option value="%m/%d/%Y">04/23/2026</option>
-      </select>
-    </div>
-    <div class="field-grid">
-      <span class="field-label">Language</span>
-      <select class="field-select" id="s_Language">
-        <option value="en_US">English</option>
-        <option value="zh_CN">中文</option>
-      </select>
-    </div>
-  </div>
-  <div class="card-footer"><button type="button" class="btn-save" onclick="saveCardConfig('display')">Save</button></div>
-</div>
-
-</div><!-- /page-settings -->
-
-<!-- ====== Logs Page ====== -->
-<div id="page-logs" class="page">
-  <div class="placeholder-page">
-    <div class="ph-icon">&#x1F4CB;</div>
-    <div class="ph-title">Logs</div>
-    <div class="ph-desc">Log viewer coming soon</div>
-  </div>
-</div><!-- /page-logs -->
-
-
-</div><!-- /layout-main -->
-</div><!-- /layout-main-container -->
-</div><!-- /layout-wrapper -->
-
-<div id="toast-container" class="toast-container"></div>
+  <section class="page" id="page-logs">
+    <div class="hero"><div><h1>Logs</h1><p class="lead">Runtime logs are not streamed in this build. Use serial monitor for deep diagnostics.</p></div></div>
+    <div class="panel"><div class="panel-body"><div class="result">No web log stream available yet.</div></div></div>
+  </section>
+</main>
+<div class="toast-zone" id="toastZone"></div>
 
 <script>
-/* === Navigation === */
-function switchPage(pageId, el) {
-  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
-  document.getElementById('page-' + pageId).classList.add('active');
-  document.querySelectorAll('.nav-link').forEach(function(a) { a.classList.remove('active'); });
-  if (el) el.classList.add('active');
-  closeSidebar();
-  if (pageId === 'settings' && !settingsLoaded) loadSettingsConfig();
-}
-
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
-  document.getElementById('layoutMask').classList.toggle('active');
-}
-
-function closeSidebar() {
-  if (window.innerWidth <= 991) {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('layoutMask').classList.remove('active');
-  }
-}
-
-/* === Toast === */
-function showToast(msg, isError, type, title) {
-  var toastType = type || (isError ? 'error' : 'success');
-  var toastTitle = title || (isError ? 'Error' : 'Saved');
-  var container = document.getElementById('toast-container');
-  var el = document.createElement('div');
-  el.className = 'ngx-toastr toast-' + toastType;
-  el.innerHTML =
-    '<button class="toast-close-btn" onclick="var p=this.parentNode;p.classList.add(\'toast-out\');setTimeout(function(){if(p.parentNode)p.parentNode.removeChild(p);},350);">&#x2715;</button>' +
-    '<div class="toast-title">' + toastTitle + '</div>' +
-    '<div class="toast-detail">' + msg + '</div>' +
-    '<div class="toast-progress" style="width:100%;"></div>';
-  container.appendChild(el);
-  requestAnimationFrame(function() {
-    requestAnimationFrame(function() { el.classList.add('toast-in'); });
-  });
-  var prog = el.querySelector('.toast-progress');
-  var duration = 4000;
-  var start = null;
-  function anim(ts) {
-    if (!start) start = ts;
-    var pct = 100 - Math.min(100, (ts - start) / duration * 100);
-    prog.style.width = pct + '%';
-    if (pct > 0 && el.parentNode) requestAnimationFrame(anim);
-  }
-  requestAnimationFrame(anim);
-  el._tid = setTimeout(function() {
-    el.classList.add('toast-out');
-    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 350);
-  }, duration);
-}
-
-/* === Device Restart === */
-function restartLocalDevice() {
-  if (!confirm('Restart the weather display?')) return;
-  fetch('/api/system/restart', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
-    .then(function(r) {
-      if (r.ok) showToast('Device is restarting...', false, 'info', 'Restart');
-      else showToast('Restart request failed', true);
-    })
-    .catch(function() { showToast('Device is restarting...', false, 'info', 'Restart'); });
-}
-
-/* === Init on load: settings is default page === */
-(function() {
-  function init() {
-    var active = document.querySelector('.page.active');
-    if (active && active.id === 'page-settings') loadSettingsConfig();
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
-})();
-
-/* === Settings Page Logic === */
-var settingsLoaded = false;
-var PWD_SENTINEL = '\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF';
-
-function onPwdInput(el) {
-  var btn = document.getElementById('pwdEyeBtn');
-  if (!btn) return;
-  var modified = el.value.length > 0 && el.value !== PWD_SENTINEL;
-  btn.style.display = modified ? 'inline-block' : 'none';
-  if (!modified) el.type = 'password';
-}
-
-function togglePwdVisibility() {
-  var inp = document.getElementById('s_WifiPSWD');
-  var btn = document.getElementById('pwdEyeBtn');
-  if (!inp || !btn) return;
-  inp.type = (inp.type === 'password') ? 'text' : 'password';
-  btn.innerHTML = inp.type === 'password' ? '&#x1F441;' : '&#x1F648;';
-}
-
-// Field map: card name → list of {id, key, password?, int?}
-var CARD_FIELDS = {
-  wifi: [
-    { id: 's_WifiSSID', key: 'WifiSSID' },
-    { id: 's_WifiPSWD', key: 'WifiPSWD', password: true },
-  ],
-  location: [
-    { id: 's_Lat',      key: 'Lat' },
-    { id: 's_Lon',      key: 'Lon' },
-    { id: 's_City',     key: 'City' },
-    { id: 's_Timezone', key: 'Timezone', int: true },
-  ],
-  schedule: [
-    { id: 's_SleepMin', key: 'SleepMin', int: true },
-    { id: 's_BedTime',  key: 'BedTime',  int: true },
-    { id: 's_WakeTime', key: 'WakeTime', int: true },
-    { id: 's_PortalSec', key: 'PortalSec', int: true },
-  ],
-  units: [
-    { id: 's_UnitsTemp',   key: 'UnitsTemp' },
-    { id: 's_UnitsSpeed',  key: 'UnitsSpeed' },
-    { id: 's_UnitsPres',   key: 'UnitsPres' },
-    { id: 's_UnitsDist',   key: 'UnitsDist' },
-    { id: 's_UnitsPrecip', key: 'UnitsPrecip' },
-  ],
-  display: [
-    { id: 's_TimeFmt',  key: 'TimeFmt' },
-    { id: 's_DateFmt',  key: 'DateFmt' },
-    { id: 's_Language', key: 'Language' },
-  ],
+var state = { config: {}, pages: null, health: null, sources: {} };
+var PWD_SENTINEL = '******';
+var sourceDeps = {
+  weather: ['weather'],
+  calendar: ['calendar'],
+  news: ['news'],
+  finance: ['finance'],
+  portfolio: ['portfolio'],
+  economic: ['economic'],
+  time: ['time'],
+  focus: ['focus'],
+  indoor: ['indoor']
 };
+var worldCityOptions = [
+  { name: '', label: 'Select city', tz: '' },
+  { name: 'custom', label: 'Custom', tz: '' },
+  { name: 'Shanghai', label: 'Shanghai', tz: 'Asia/Shanghai' },
+  { name: 'Beijing', label: 'Beijing', tz: 'Asia/Shanghai' },
+  { name: 'Tokyo', label: 'Tokyo', tz: 'Asia/Tokyo' },
+  { name: 'Seoul', label: 'Seoul', tz: 'Asia/Seoul' },
+  { name: 'New York', label: 'New York', tz: 'America/New_York' },
+  { name: 'Los Angeles', label: 'Los Angeles', tz: 'America/Los_Angeles' },
+  { name: 'Chicago', label: 'Chicago', tz: 'America/Chicago' },
+  { name: 'Denver', label: 'Denver', tz: 'America/Denver' },
+  { name: 'London', label: 'London', tz: 'Europe/London' },
+  { name: 'Berlin', label: 'Berlin', tz: 'Europe/Berlin' },
+  { name: 'Paris', label: 'Paris', tz: 'Europe/Paris' },
+  { name: 'Sydney', label: 'Sydney', tz: 'Australia/Sydney' },
+  { name: 'UTC', label: 'UTC', tz: 'UTC' }
+];
 
-function _getVal(id) {
-  var el = document.getElementById(id);
-  return el ? el.value : '';
+function $(id) { return document.getElementById(id); }
+function setVal(id, value) { var el = $(id); if (el) el.value = value == null ? '' : String(value); }
+function getVal(id) { var el = $(id); return el ? el.value : ''; }
+function trimText(value) { return String(value == null ? '' : value).trim(); }
+function toast(title, msg, error) {
+  var box = document.createElement('div');
+  box.className = 'toast' + (error ? ' error' : '');
+  box.innerHTML = '<div class="toast-title">' + title + '</div><div class="toast-msg">' + msg + '</div>';
+  $('toastZone').appendChild(box);
+  setTimeout(function(){ if (box.parentNode) box.parentNode.removeChild(box); }, 4200);
 }
-
-function _setVal(id, val) {
-  var el = document.getElementById(id);
-  if (!el) return;
-  if (el.tagName === 'SELECT') {
-    // Try to select matching option
-    var opts = el.options;
-    for (var i = 0; i < opts.length; i++) {
-      if (opts[i].value === String(val)) { el.selectedIndex = i; return; }
-    }
-    // No match — leave as-is
-  } else {
-    el.value = (val !== null && val !== undefined) ? String(val) : '';
+function initWorldClockCityOptions() {
+  for (var row = 0; row < 4; row++) {
+    var select = $('t_zone_city_' + row);
+    if (!select || select.options.length) continue;
+    worldCityOptions.forEach(function(opt, idx) {
+      var option = document.createElement('option');
+      option.value = opt.name === 'custom' ? 'custom' : String(idx);
+      option.textContent = opt.label + (opt.tz ? ' - ' + opt.tz : '');
+      select.appendChild(option);
+    });
   }
 }
-
-function loadSettingsConfig() {
-  fetch('/api/config')
-    .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(function(cfg) {
-      Object.keys(CARD_FIELDS).forEach(function(card) {
-        CARD_FIELDS[card].forEach(function(f) {
-          if (!f.password) _setVal(f.id, cfg[f.key]);
-        });
-      });
-      var pwdEl = document.getElementById('s_WifiPSWD');
-      if (pwdEl) { pwdEl.value = PWD_SENTINEL; pwdEl.type = 'password'; }
-      var eyeBtn = document.getElementById('pwdEyeBtn');
-      if (eyeBtn) eyeBtn.style.display = 'none';
-      settingsLoaded = true;
-    })
-    .catch(function(e) {
-      showToast('Failed to load config: ' + e, true);
-    });
+function looksLikeTimezoneId(value) {
+  value = trimText(value);
+  return value.indexOf('/') >= 0 || value.indexOf('Etc/') === 0 || value === 'UTC' || value === 'GMT';
 }
-
-function saveCardConfig(card) {
-  var fields = CARD_FIELDS[card];
-  if (!fields) return;
-
-  var data = {};
-  fields.forEach(function(f) {
-    var val = _getVal(f.id);
-    if (f.password && (!val || val === PWD_SENTINEL)) return; // skip empty / sentinel
-    data[f.key] = f.int ? (parseInt(val, 10) || 0) : val;
+function fallbackWorldZoneLabel(zoneId) {
+  zoneId = trimText(zoneId);
+  var slash = zoneId.lastIndexOf('/');
+  if (slash >= 0 && slash + 1 < zoneId.length) zoneId = zoneId.slice(slash + 1);
+  return zoneId.replace(/_/g, ' ');
+}
+function parseWorldZonesText(text) {
+  var zones = [];
+  trimText(text).split(/[,\n\r]+/).forEach(function(token) {
+    if (zones.length >= 4) return;
+    token = trimText(token);
+    if (!token) return;
+    var sep = token.indexOf('|');
+    var label = '';
+    var tz = '';
+    if (sep < 0) {
+      tz = token;
+      label = fallbackWorldZoneLabel(tz);
+    } else {
+      var first = trimText(token.slice(0, sep));
+      var second = trimText(token.slice(sep + 1));
+      if (looksLikeTimezoneId(first)) {
+        tz = first;
+        label = second || fallbackWorldZoneLabel(first);
+      } else {
+        label = first;
+        tz = second;
+      }
+    }
+    if (tz && label) zones.push({ label: label, tz: tz });
   });
-
-  // Disable save button during request
-  var btn = document.querySelector('#page-settings .card-footer [onclick*="' + card + '"]');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
-
-  fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
-      if (res.ok) {
-        showToast('Saved successfully');
-        // Guided apply: offer an immediate restart so the new configuration
-        // takes effect now; Cancel keeps editing (applies on next wake).
-        setTimeout(function() {
-          if (confirm('Saved. Restart now to apply the new configuration?\nChoose Cancel to keep editing — changes will apply on the next wake.')) {
-            fetch('/api/system/restart', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
-              .then(function() { showToast('Device is restarting...', false, 'info', 'Restart'); })
-              .catch(function() { showToast('Device is restarting...', false, 'info', 'Restart'); });
-          }
-        }, 300);
+  return zones;
+}
+function setWorldClockRow(row, label, tz) {
+  label = trimText(label);
+  tz = trimText(tz);
+  var selectValue = '';
+  if (label || tz) {
+    selectValue = 'custom';
+    for (var i = 0; i < worldCityOptions.length; i++) {
+      if (worldCityOptions[i].label === label && worldCityOptions[i].tz === tz) {
+        selectValue = String(i);
+        break;
       }
-      else showToast('Save failed: ' + (res.error || 'unknown'), true);
-    })
-    .catch(function(e) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
-      showToast('Request failed: ' + e, true);
+    }
+  }
+  setVal('t_zone_city_' + row, selectValue);
+  setVal('t_zone_label_' + row, label);
+  setVal('t_zone_tz_' + row, tz);
+}
+function fillWorldClockRows(zonesText) {
+  initWorldClockCityOptions();
+  for (var row = 0; row < 4; row++) setWorldClockRow(row, '', '');
+  parseWorldZonesText(zonesText).forEach(function(zone, idx) {
+    setWorldClockRow(idx, zone.label, zone.tz);
+  });
+}
+function applyWorldCity(row) {
+  var value = getVal('t_zone_city_' + row);
+  if (!value) {
+    setVal('t_zone_label_' + row, '');
+    setVal('t_zone_tz_' + row, '');
+    return;
+  }
+  if (value === 'custom') return;
+  var opt = worldCityOptions[parseInt(value, 10)];
+  if (!opt) return;
+  setVal('t_zone_label_' + row, opt.label);
+  setVal('t_zone_tz_' + row, opt.tz);
+}
+function collectWorldZonesText() {
+  var lines = [];
+  for (var row = 0; row < 4; row++) {
+    var label = trimText(getVal('t_zone_label_' + row));
+    var tz = trimText(getVal('t_zone_tz_' + row));
+    if (!label && !tz) continue;
+    if (!tz) {
+      $('sourceResult').textContent = 'World Clock row ' + (row + 1) + ' needs an IANA timezone.';
+      toast('World Clock', 'Row ' + (row + 1) + ' needs an IANA timezone.', true);
+      return null;
+    }
+    if (!label) label = fallbackWorldZoneLabel(tz);
+    lines.push(label + ' | ' + tz);
+  }
+  return lines.join('\n');
+}
+function api(path, opts) {
+  return fetch(path, opts || {}).then(function(r) {
+    return r.text().then(function(t) {
+      var data = {};
+      try { data = t ? JSON.parse(t) : {}; } catch(e) { data = { raw: t }; }
+      if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+      return data;
     });
+  });
+}
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+  $('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(function(b){ b.classList.remove('active'); });
+  var btn = el || document.querySelector('.nav button[data-page="' + name + '"]');
+  if (btn) btn.classList.add('active');
+  $('side').classList.remove('open');
+  if (name === 'sources') loadSources();
+}
+function toggleSidebar() { $('side').classList.toggle('open'); }
+
+function reloadAll() {
+  return Promise.all([loadConfig(), loadPages(), loadHealth()]).then(loadSources).catch(function(e){ toast('Load failed', e.message, true); });
+}
+function loadConfig() {
+  return api('/api/config').then(function(cfg) {
+    state.config = cfg;
+    setVal('d_WifiSSID', cfg.WifiSSID);
+    setVal('d_WifiPSWD', '');
+    setVal('d_SleepMin', cfg.SleepMin);
+    setVal('d_BedTime', cfg.BedTime);
+    setVal('d_WakeTime', cfg.WakeTime);
+    setVal('d_PortalSec', cfg.PortalSec);
+    setVal('d_TimeFmt', cfg.TimeFmt);
+    setVal('d_DateFmt', cfg.DateFmt);
+    setVal('d_Language', cfg.Language);
+    setVal('d_UnitsTemp', cfg.UnitsTemp);
+    setVal('d_UnitsPres', cfg.UnitsPres);
+    setVal('d_UnitsDist', cfg.UnitsDist);
+  });
+}
+function loadPages() { return api('/api/pages').then(function(p){ state.pages = p; renderPages(); renderSourceVisibility(); }); }
+function loadHealth() { return api('/api/health').then(function(h){ state.health = h; renderHealth(); }); }
+
+function renderHealth() {
+  var h = state.health || {};
+  $('topStatus').innerHTML = '<span class="pill"><strong>' + (h.totalPages || '-') + '</strong> pages</span><span class="pill"><strong>' + (h.requiredCount || 0) + '</strong> required</span>';
+  $('healthStats').innerHTML =
+    '<div class="stat"><div class="num">' + (h.totalPages || 1) + '</div><div class="label">Total pages incl. page 0</div></div>' +
+    '<div class="stat"><div class="num">' + (h.enabledManagedPages || 0) + '</div><div class="label">Managed pages</div></div>' +
+    '<div class="stat"><div class="num">' + (h.requiredCount || 0) + '</div><div class="label">Required setup</div></div>' +
+    '<div class="stat"><div class="num">' + (h.optionalCount || 0) + '</div><div class="label">Optional notes</div></div>';
+}
+function renderPages() {
+  var data = state.pages;
+  if (!data) return;
+  var rows = '<tr><td><span class="page-name">Weather Home</span><span class="sub">Page 0 · legacy PageWeather</span></td><td><span class="status Ready">Ready</span></td><td>Always</td><td>-</td><td>0</td><td>Fixed</td></tr>';
+  data.pages.sort(function(a,b){ return a.order - b.order; }).forEach(function(p, idx) {
+    rows += '<tr data-id="' + p.id + '">' +
+      '<td><span class="page-name">' + p.name + '</span><span class="sub">' + p.category + ' · ' + p.priority + '</span></td>' +
+      '<td><span class="status ' + p.readiness.state + '">' + p.readiness.state + '</span><span class="sub">' + p.readiness.message + '</span></td>' +
+      '<td><input class="toggle page-enabled" type="checkbox" ' + (p.enabled ? 'checked' : '') + '></td>' +
+      '<td><input class="toggle page-auto" type="checkbox" ' + (p.autoRotate ? 'checked' : '') + '></td>' +
+      '<td>' + (idx + 1) + '</td>' +
+      '<td><div class="mini-actions"><button class="icon-btn" onclick="movePage(' + p.id + ',-1)">Up</button><button class="icon-btn" onclick="movePage(' + p.id + ',1)">Dn</button></div></td>' +
+    '</tr>';
+  });
+  $('pageRows').innerHTML = rows;
+  renderRequiredSetup();
+}
+function renderRequiredSetup() {
+  var required = (state.pages && state.pages.pages || []).filter(function(p){ return p.enabled && p.readiness.state === 'Required'; });
+  if (!required.length) {
+    $('requiredSetup').innerHTML = '<div class="result">All enabled pages are ready or have only optional setup notes.</div>';
+    return;
+  }
+  $('requiredSetup').innerHTML = required.map(function(p){
+    return '<div class="result" style="margin-bottom:8px;"><strong>' + p.name + '</strong>: ' + p.readiness.message + ' <button class="btn" onclick="showPage(\'sources\')">Configure</button></div>';
+  }).join('');
+}
+function movePage(id, dir) {
+  var pages = state.pages.pages;
+  var i = pages.findIndex(function(p){ return p.id === id; });
+  var j = i + dir;
+  if (i < 0 || j < 0 || j >= pages.length) return;
+  var tmp = pages[i]; pages[i] = pages[j]; pages[j] = tmp;
+  pages.forEach(function(p, idx){ p.order = idx + 1; });
+  renderPages();
+}
+function savePages() {
+  var enabled = [], auto = [], order = [];
+  document.querySelectorAll('#pageRows tr[data-id]').forEach(function(row) {
+    var id = parseInt(row.getAttribute('data-id'), 10);
+    order.push(id);
+    if (row.querySelector('.page-enabled').checked) enabled.push(id);
+    if (row.querySelector('.page-auto').checked) auto.push(id);
+  });
+  api('/api/pages', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled:enabled, autoRotate:auto, order:order}) })
+    .then(function(){ toast('Pages saved', 'Restart now or keep editing.'); return Promise.all([loadPages(), loadHealth()]); })
+    .then(promptRestart)
+    .catch(function(e){ toast('Save failed', e.message, true); });
+}
+function renderSourceVisibility() {
+  if (!state.pages) return;
+  var enabledDeps = {};
+  state.pages.pages.forEach(function(p) {
+    if (!p.enabled) return;
+    (p.providers || []).forEach(function(dep){ enabledDeps[dep] = true; });
+  });
+  document.querySelectorAll('.source-card').forEach(function(card) {
+    var name = card.getAttribute('data-source-card');
+    var deps = sourceDeps[name] || [];
+    var show = name === 'weather' || sourceConfigured(name) || deps.some(function(dep){ return enabledDeps[dep]; });
+    card.classList.toggle('hidden-by-pages', !show);
+  });
 }
 
-/* --- Enter key → Save for focused card --- */
-document.addEventListener('keydown', function(e) {
-  if (e.key !== 'Enter') return;
-  var el = document.activeElement;
-  if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'SELECT')) return;
-  var card = el.closest('.card');
-  if (!card) return;
-  var btn = card.querySelector('.btn-save');
-  if (btn && !btn.disabled) { e.preventDefault(); btn.click(); }
-});
-
-/* --- City search via Open-Meteo Geocoding API --- */
-var citySearchTimer = null;
-function searchCity(query) {
-  clearTimeout(citySearchTimer);
-  var dd = document.getElementById('cityDropdown');
-  if (!query || query.length < 2) { dd.style.display = 'none'; return; }
-  citySearchTimer = setTimeout(function() {
-    fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(query) + '&count=8&language=en&format=json')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (!data.results || data.results.length === 0) {
-        dd.innerHTML = '<div class="city-item" style="color:#888;">No results</div>';
-        dd.style.display = 'block'; return;
-      }
-      dd.innerHTML = '';
-      data.results.forEach(function(c) {
-        var item = document.createElement('div');
-        item.className = 'city-item';
-        item.textContent = c.name + (c.admin1 ? ', ' + c.admin1 : '') + (c.country ? ', ' + c.country : '') + ' (' + c.latitude.toFixed(2) + ', ' + c.longitude.toFixed(2) + ')';
-        item.onclick = function() {
-          document.getElementById('s_City').value = c.name + (c.admin1 ? ', ' + c.admin1 : '') + (c.country ? ', ' + c.country : '');
-          document.getElementById('s_Lat').value = c.latitude.toFixed(4);
-          document.getElementById('s_Lon').value = c.longitude.toFixed(4);
-          dd.style.display = 'none';
-        };
-        dd.appendChild(item);
-      });
-      dd.style.display = 'block';
-    }).catch(function() { dd.style.display = 'none'; });
-  }, 350);
+function loadSources() {
+  var names = ['weather','calendar','news','finance','portfolio','economic','time','focus','indoor'];
+  return Promise.all(names.map(function(n){ return api('/api/sources/' + n).then(function(d){ state.sources[n] = d; }).catch(function(){ state.sources[n] = {}; }); })).then(function(){ fillSources(); renderSourceVisibility(); });
 }
-
-document.addEventListener('click', function(e) {
-  var dd = document.getElementById('cityDropdown');
-  if (dd && !dd.contains(e.target) && e.target.id !== 's_City') dd.style.display = 'none';
+function sourceConfigured(name) {
+  var s = state.sources[name] || {};
+  if (name === 'calendar') return !!(s.sources && s.sources.length);
+  if (name === 'news') return !!s.feeds;
+  if (name === 'finance') return !!s.symbols;
+  if (name === 'portfolio') return !!(s.configured || s.positionCount);
+  if (name === 'economic') return !!s.feeds;
+  if (name === 'time') return !!s.zones;
+  if (name === 'focus') return !!(s.label || s.focusMinutes);
+  if (name === 'indoor') return !!s.enabled;
+  return false;
+}
+function fillSources() {
+  var w = state.sources.weather || {};
+  setVal('w_City', w.City); setVal('w_Lat', w.Lat); setVal('w_Lon', w.Lon); setVal('w_UnitsTemp', w.UnitsTemp); setVal('w_UnitsSpeed', w.UnitsSpeed); setVal('w_UnitsPrecip', w.UnitsPrecip);
+  var c = state.sources.calendar || {};
+  var first = c.sources && c.sources[0];
+  if (first) {
+    setVal('c_alias', first.alias || '');
+    setVal('c_enabled', first.enabled ? 'true' : 'false');
+    setVal('c_url', '');
+    $('c_url').placeholder = 'Saved: ' + first.maskedUrl + ' (leave blank to keep)';
+    $('calendarMeta').textContent = 'Configured: ' + (first.alias || 'Calendar') + ' · ' + (first.enabled ? 'Enabled' : 'Disabled') + ' · ' + first.maskedUrl;
+  } else {
+    setVal('c_alias', '');
+    setVal('c_enabled', 'true');
+    $('c_url').placeholder = 'https://... or webcal://...';
+    $('calendarMeta').textContent = 'No calendar source configured.';
+  }
+  var n = state.sources.news || {}; setVal('n_feeds', n.feeds);
+  var f = state.sources.finance || {}; setVal('f_symbols', f.symbols);
+  var p = state.sources.portfolio || {}; $('portfolioMeta').textContent = 'Stored positions: ' + (p.positionCount || 0) + '. Values are not returned by GET APIs.';
+  var e = state.sources.economic || {}; setVal('e_feeds', e.feeds);
+  var t = state.sources.time || {}; setVal('t_TzId', t.TzId); fillWorldClockRows(t.zones);
+  var fc = state.sources.focus || {}; setVal('fc_label', fc.label); setVal('fc_focus_min', fc.focusMinutes || 25); setVal('fc_break_min', fc.breakMinutes || 5); setVal('fc_sessions', fc.sessionCount || 4);
+  var i = state.sources.indoor || {}; setVal('i_enabled', i.enabled ? 'true' : 'false'); setVal('i_room', i.room);
+}
+function sourceBody(name) {
+  if (name === 'weather') return { City:getVal('w_City'), Lat:getVal('w_Lat'), Lon:getVal('w_Lon'), UnitsTemp:getVal('w_UnitsTemp'), UnitsSpeed:getVal('w_UnitsSpeed'), UnitsPrecip:getVal('w_UnitsPrecip') };
+  if (name === 'calendar') return { index:0, alias:getVal('c_alias'), url:getVal('c_url'), apiKey:getVal('c_apiKey'), enabled:getVal('c_enabled') === 'true', color:0 };
+  if (name === 'news') return { feeds:getVal('n_feeds') };
+  if (name === 'finance') return { symbols:getVal('f_symbols') };
+  if (name === 'portfolio') return { positions:getVal('p_positions') };
+  if (name === 'economic') return { feeds:getVal('e_feeds') };
+  if (name === 'time') {
+    var zones = collectWorldZonesText();
+    if (zones == null) return null;
+    return { TzId:getVal('t_TzId'), zones:zones };
+  }
+  if (name === 'focus') return { label:getVal('fc_label'), focusMinutes:parseInt(getVal('fc_focus_min'),10)||25, breakMinutes:parseInt(getVal('fc_break_min'),10)||5, sessionCount:parseInt(getVal('fc_sessions'),10)||4 };
+  if (name === 'indoor') return { enabled:getVal('i_enabled') === 'true', room:getVal('i_room') };
+  return {};
+}
+function saveSource(name) {
+  var body = sourceBody(name);
+  if (body == null) return;
+  api('/api/sources/' + name, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+    .then(function(){ $('sourceResult').textContent = name + ' saved.'; toast('Source saved', name); return reloadAll(); })
+    .then(promptRestart)
+    .catch(function(e){ $('sourceResult').textContent = name + ' failed: ' + e.message; toast('Source failed', e.message, true); });
+}
+function syncNow() {
+  api('/api/sync', { method:'POST' })
+    .then(function(r){ toast('Sync', r.message); $('sourceResult').textContent = r.message; })
+    .catch(function(e){ toast('Sync failed', e.message, true); });
+}
+function saveDevice() {
+  var data = {
+    WifiSSID:getVal('d_WifiSSID'), SleepMin:parseInt(getVal('d_SleepMin'),10)||30, BedTime:parseInt(getVal('d_BedTime'),10)||0,
+    WakeTime:parseInt(getVal('d_WakeTime'),10)||6, PortalSec:parseInt(getVal('d_PortalSec'),10)||0, TimeFmt:getVal('d_TimeFmt'),
+    DateFmt:getVal('d_DateFmt'), Language:getVal('d_Language'), UnitsTemp:getVal('d_UnitsTemp'), UnitsPres:getVal('d_UnitsPres'), UnitsDist:getVal('d_UnitsDist')
+  };
+  var pwd = getVal('d_WifiPSWD'); if (pwd) data.WifiPSWD = pwd;
+  api('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) })
+    .then(function(){ toast('Device saved', 'Restart now or keep editing.'); return loadConfig(); })
+    .then(promptRestart)
+    .catch(function(e){ toast('Save failed', e.message, true); });
+}
+function promptRestart() {
+  setTimeout(function(){ if (confirm('Saved. Restart now to apply the new configuration?')) restartDevice(true); }, 250);
+}
+function restartDevice(silent) {
+  api('/api/system/restart', { method:'POST' }).then(function(){ if (!silent) toast('Restart', 'Device is restarting.'); }).catch(function(){ if (!silent) toast('Restart', 'Device is restarting.'); });
+}
+document.addEventListener('DOMContentLoaded', function() {
+  initWorldClockCityOptions();
+  reloadAll();
 });
-
 </script>
 </body>
 </html>

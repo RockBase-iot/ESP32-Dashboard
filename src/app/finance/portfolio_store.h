@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,74 @@
 inline bool isValidPortfolioPosition(const PortfolioPosition &position) {
     return !position.ticker.empty() && position.quantity >= 0.0f &&
            position.costBasis >= 0.0f && !position.currency.empty();
+}
+
+inline std::string trimPortfolioToken(const std::string &text) {
+    size_t begin = 0;
+    while (begin < text.size() && (text[begin] == ' ' || text[begin] == '\t')) {
+        ++begin;
+    }
+    size_t end = text.size();
+    while (end > begin && (text[end - 1] == ' ' || text[end - 1] == '\t')) {
+        --end;
+    }
+    return text.substr(begin, end - begin);
+}
+
+inline std::vector<PortfolioPosition> parsePortfolioPositionsText(const std::string &text) {
+    std::vector<PortfolioPosition> positions;
+    std::string row;
+    auto flush = [&]() {
+        row = trimPortfolioToken(row);
+        if (row.empty()) {
+            return;
+        }
+        std::vector<std::string> fields;
+        std::string field;
+        for (char c : row) {
+            if (c == ':') {
+                fields.push_back(trimPortfolioToken(field));
+                field.clear();
+            } else {
+                field.push_back(c);
+            }
+        }
+        fields.push_back(trimPortfolioToken(field));
+        if (fields.size() != 4) {
+            return;
+        }
+        PortfolioPosition position;
+        position.ticker = fields[0];
+        position.quantity = std::strtof(fields[1].c_str(), nullptr);
+        position.costBasis = std::strtof(fields[2].c_str(), nullptr);
+        position.currency = fields[3];
+        if (isValidPortfolioPosition(position)) {
+            positions.push_back(position);
+        }
+    };
+
+    for (char c : text) {
+        if (c == ',' || c == '\n' || c == '\r' || c == ';') {
+            flush();
+            row.clear();
+        } else {
+            row.push_back(c);
+        }
+    }
+    flush();
+    return positions;
+}
+
+inline bool portfolioTickerMatchesQuote(const std::string &positionTicker,
+                                        const std::string &quoteTicker) {
+    if (positionTicker == quoteTicker) {
+        return true;
+    }
+    if (positionTicker.empty() || quoteTicker.size() <= positionTicker.size()) {
+        return false;
+    }
+    return quoteTicker.compare(0, positionTicker.size(), positionTicker) == 0 &&
+           quoteTicker[positionTicker.size()] == '.';
 }
 
 inline PortfolioSummary calculatePortfolioSummary(const PortfolioSnapshot &snapshot) {
@@ -23,7 +92,8 @@ inline PortfolioSummary calculatePortfolioSummary(const PortfolioSnapshot &snaps
         }
         const FinanceQuote *quote = nullptr;
         for (const FinanceQuote &candidate : snapshot.quotes) {
-            if (candidate.ticker == position.ticker && isValidFinanceQuote(candidate)) {
+            if (portfolioTickerMatchesQuote(position.ticker, candidate.ticker) &&
+                isValidFinanceQuote(candidate)) {
                 quote = &candidate;
                 break;
             }

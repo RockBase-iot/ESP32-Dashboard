@@ -45,6 +45,16 @@ void drawQuoteRow(IDrawSurface &surface, const Rect &rect, const FinanceQuote &q
                      quote.source, kDashboardBlack, TextAlign::Right, 1);
 }
 
+void drawEmptyState(IDrawSurface &surface, const Rect &rect, const std::string &title,
+                    const std::string &detail) {
+    surface.drawRect(rect.x, rect.y, rect.w, rect.h, kDashboardBlack);
+    surface.drawText(static_cast<int16_t>(rect.x + 12), static_cast<int16_t>(rect.y + 22),
+                     title, kDashboardAccent, TextAlign::Left, 1);
+    surface.drawText(static_cast<int16_t>(rect.x + 12), static_cast<int16_t>(rect.y + 40),
+                     calm_grid::fitText(surface, detail, static_cast<int16_t>(rect.w - 24), 1),
+                     kDashboardBlack, TextAlign::Left, 1);
+}
+
 void drawEventRow(IDrawSurface &surface, const Rect &rect, const EconomicEvent &event) {
     surface.drawLine(rect.x, static_cast<int16_t>(rect.y + rect.h - 1),
                      static_cast<int16_t>(rect.x + rect.w), static_cast<int16_t>(rect.y + rect.h - 1),
@@ -88,22 +98,32 @@ FinancePageSnapshot sampleFinancePageSnapshot() {
 }
 
 void renderStockInfoPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot,
-                         size_t pageNumber, size_t pageCount) {
+                         size_t pageNumber, size_t pageCount, const std::string &ipText,
+                         calm_grid::ChromeContext chrome) {
     calm_grid::drawPrototypePageChrome(surface, "STOCK INFO",
-                                       calm_grid::PageIconKind::Portfolio, pageNumber, pageCount);
+                                       calm_grid::PageIconKind::Portfolio, pageNumber, pageCount,
+                                       chrome.timeText, ipText.empty() ? chrome.ipText : ipText,
+                                       chrome.batteryText);
     const std::array<Rect, 4> rows = {{{18, 44, 364, 34}, {18, 86, 364, 34},
                                        {18, 128, 364, 34}, {18, 170, 364, 34}}};
     const size_t count = std::min<size_t>(rows.size(), snapshot.quotes.size());
     for (size_t i = 0; i < count; ++i) {
         drawQuoteRow(surface, rows[i], snapshot.quotes[i]);
     }
+    if (count == 0) {
+        drawEmptyState(surface, Rect{18, 62, 364, 120}, "NO QUOTES",
+                       "Check Stooq symbols or network source");
+    }
     drawFinanceComplianceFooter(surface, snapshot);
 }
 
 void renderPortfolioSummaryPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot,
-                                size_t pageNumber, size_t pageCount) {
+                                size_t pageNumber, size_t pageCount,
+                                const std::string &ipText, calm_grid::ChromeContext chrome) {
     calm_grid::drawPrototypePageChrome(surface, "PORTFOLIO",
-                                       calm_grid::PageIconKind::Portfolio, pageNumber, pageCount);
+                                       calm_grid::PageIconKind::Portfolio, pageNumber, pageCount,
+                                       chrome.timeText, ipText.empty() ? chrome.ipText : ipText,
+                                       chrome.batteryText);
     surface.drawRect(18, 62, 364, 64, kDashboardBlack);
     surface.drawText(26, 74, "PORTFOLIO SUMMARY", kDashboardAccent, TextAlign::Left, 1);
     surface.drawLine(26, 86, 374, 86, kDashboardBlack);
@@ -126,13 +146,20 @@ void renderPortfolioSummaryPage(IDrawSurface &surface, const FinancePageSnapshot
                          holding.gainLossPercent >= 0.0f ? kDashboardAccent : kDashboardBlack,
                          TextAlign::Right, 1);
     }
+    if (count == 0) {
+        drawEmptyState(surface, Rect{26, 174, 348, 48}, "NO HOLDINGS",
+                       "Add positions, e.g. AAPL:2:180:USD");
+    }
     drawFinanceComplianceFooter(surface, snapshot);
 }
 
 void renderEconomicCalendarPage(IDrawSurface &surface, const FinancePageSnapshot &snapshot,
-                                size_t pageNumber, size_t pageCount) {
+                                size_t pageNumber, size_t pageCount,
+                                const std::string &ipText, calm_grid::ChromeContext chrome) {
     calm_grid::drawPrototypePageChrome(surface, "ECONOMIC CALENDAR",
-                                       calm_grid::PageIconKind::Economic, pageNumber, pageCount);
+                                       calm_grid::PageIconKind::Economic, pageNumber, pageCount,
+                                       chrome.timeText, ipText.empty() ? chrome.ipText : ipText,
+                                       chrome.batteryText);
     surface.drawRect(18, 62, 364, 176, kDashboardBlack);
     surface.drawText(26, 74, "ECONOMIC CALENDAR", kDashboardAccent, TextAlign::Left, 1);
     surface.drawLine(26, 86, 374, 86, kDashboardBlack);
@@ -141,6 +168,10 @@ void renderEconomicCalendarPage(IDrawSurface &surface, const FinancePageSnapshot
     const size_t count = std::min<size_t>(rows.size(), snapshot.events.size());
     for (size_t i = 0; i < count; ++i) {
         drawEventRow(surface, rows[i], snapshot.events[i]);
+    }
+    if (count == 0) {
+        drawEmptyState(surface, Rect{26, 102, 348, 80}, "CONFIG REQUIRED",
+                       "Add an economic RSS or ICS feed");
     }
     drawFinanceComplianceFooter(surface, snapshot);
 }

@@ -61,6 +61,40 @@ bool extractTag(const std::string &text, const std::string &tag, size_t start, s
     }
     return false;
 }
+
+bool extractTagAttribute(const std::string &text, const std::string &tag, const std::string &attr,
+                         size_t start, size_t end, std::string &value) {
+    const std::string lower = lowerAscii(text);
+    const std::string open = "<" + lowerAscii(tag);
+    const std::string needle = lowerAscii(attr) + "=";
+    size_t tagStart = lower.find(open, start);
+    while (tagStart != std::string::npos && tagStart < end) {
+        const size_t openEnd = text.find('>', tagStart);
+        if (openEnd == std::string::npos || openEnd > end) {
+            return false;
+        }
+        const size_t attrPos = lower.find(needle, tagStart);
+        if (attrPos != std::string::npos && attrPos < openEnd) {
+            const size_t quotePos = attrPos + needle.size();
+            if (quotePos >= text.size()) {
+                return false;
+            }
+            const char quote = text[quotePos];
+            if (quote != '"' && quote != '\'') {
+                return false;
+            }
+            const size_t valueStart = quotePos + 1;
+            const size_t valueEnd = text.find(quote, valueStart);
+            if (valueEnd == std::string::npos || valueEnd > openEnd) {
+                return false;
+            }
+            value = text.substr(valueStart, valueEnd - valueStart);
+            return true;
+        }
+        tagStart = lower.find(open, openEnd + 1);
+    }
+    return false;
+}
 }  // namespace
 
 RssAtomFeed parseRssAtomTitles(const std::string &xml, size_t maxItems, size_t maxTitleBytes) {
@@ -97,6 +131,8 @@ RssAtomFeed parseRssAtomTitles(const std::string &xml, size_t maxItems, size_t m
         }
         std::string link;
         if (extractTag(xml, "link", itemOpenEnd + 1, itemEnd, link)) {
+            item.link = truncateBytes(unescapeXml(link), 256);
+        } else if (extractTagAttribute(xml, "link", "href", itemOpenEnd + 1, itemEnd, link)) {
             item.link = truncateBytes(unescapeXml(link), 256);
         }
         if (!item.title.empty()) {

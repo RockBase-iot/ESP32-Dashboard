@@ -139,6 +139,10 @@ size_t PageManager::pageNumber(PageId id) const {
     return 1;
 }
 
+PageId PageManager::firstPage() const {
+    return firstEnabledPage();
+}
+
 std::vector<PageId> PageManager::rotationQueue() const {
     std::vector<PageId> queue;
     for (size_t i = 0; i < _settings.orderCount; ++i) {

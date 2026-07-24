@@ -99,17 +99,25 @@ Select the environment that matches your hardware:
 
 ```bash
 # NM Display 420 (ESP32-S3, 4.2" tri-color EPD)
-pio run -e nm-display-420 -t upload
+pio run -e nm-display-420 -t upload_all
 ```
 
-The LittleFS filesystem image (web portal HTML) is built and uploaded automatically via `extra_script_fs.py`.
+Use `upload_all` for normal device flashing. It builds and uploads the firmware,
+generates the gzipped web assets, then uploads the LittleFS filesystem image
+that contains the web portal. If the portal shows `Web assets not uploaded`,
+flash the complete image again with:
+
+```bash
+pio run -e nm-display-420 -t upload_all --upload-port <PORT>
+```
 
 ### 4. Test & build gates
 
-Run the host-side pure C++ tests before firmware changes:
+Run the focused PlatformIO build-only tests before firmware changes:
 
 ```bash
-pio test -e native
+pio test -e nm-display-420 -f test_display_page_state --without-uploading --without-testing
+pio test -e nm-display-420 -f test_wake_coordinator --without-uploading --without-testing
 ```
 
 Native tests require a host C/C++ compiler (`gcc` and `g++`) in PATH. The GitHub

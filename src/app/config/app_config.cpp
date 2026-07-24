@@ -5,6 +5,36 @@
 #include "app/web/web_config_validation.h"
 
 namespace {
+uint16_t clampFocusMinutes(int32_t minutes) {
+    if (minutes < 1) {
+        return 1;
+    }
+    if (minutes > 180) {
+        return 180;
+    }
+    return static_cast<uint16_t>(minutes);
+}
+
+uint16_t clampFocusBreakMinutes(int32_t minutes) {
+    if (minutes < 1) {
+        return 1;
+    }
+    if (minutes > 60) {
+        return 60;
+    }
+    return static_cast<uint16_t>(minutes);
+}
+
+uint8_t clampFocusSessionCount(int32_t count) {
+    if (count < 1) {
+        return 1;
+    }
+    if (count > 12) {
+        return 12;
+    }
+    return static_cast<uint8_t>(count);
+}
+
 String encodePageOrder(const uint8_t *order, size_t count) {
     String out;
     for (size_t i = 0; i < count; ++i) {
@@ -118,6 +148,20 @@ void loadAppConfig(AppConfig &cfg) {
     if (!parsePageOrder(s.GetString(NVS_KEY_PAGE_ORDER, ""), cfg)) {
         copyDefaultPageOrder(cfg, pageDefaults);
     }
+    cfg.newsFeeds = s.GetString(NVS_KEY_NEWS_FEEDS, DEFAULT_NEWS_FEEDS);
+    cfg.stockSymbols = s.GetString(NVS_KEY_STOCK_SYMBOLS, DEFAULT_STOCK_SYMBOLS);
+    cfg.portfolioPositions = s.GetString(NVS_KEY_PORTFOLIO_POS, DEFAULT_PORTFOLIO_POS);
+    cfg.economicFeeds = s.GetString(NVS_KEY_ECONOMIC_FEEDS, DEFAULT_ECONOMIC_FEEDS);
+    cfg.worldClockZones = s.GetString(NVS_KEY_WORLD_ZONES, DEFAULT_WORLD_ZONES);
+    cfg.focusLabel = s.GetString(NVS_KEY_FOCUS_LABEL, DEFAULT_FOCUS_LABEL);
+    cfg.focusMinutes = clampFocusMinutes(s.GetI32(NVS_KEY_FOCUS_MINUTES,
+                                                  DEFAULT_FOCUS_MINUTES));
+    cfg.focusBreakMinutes = clampFocusBreakMinutes(
+        s.GetI32(NVS_KEY_FOCUS_BREAK_MIN, DEFAULT_FOCUS_BREAK_MIN));
+    cfg.focusSessionCount = clampFocusSessionCount(
+        s.GetI32(NVS_KEY_FOCUS_SESSIONS, DEFAULT_FOCUS_SESSIONS));
+    cfg.indoorSensorEnabled = s.GetBool(NVS_KEY_INDOOR_ENABLED, DEFAULT_INDOOR_ENABLED);
+    cfg.indoorRoom = s.GetString(NVS_KEY_INDOOR_ROOM, DEFAULT_INDOOR_ROOM);
 
     PageSettings rawPageSettings = pageDefaults;
     if (cfg.configVersion == kDashboardConfigVersion) {
@@ -163,5 +207,16 @@ void saveAppConfig(const AppConfig &cfg) {
     s.SetI32   (NVS_KEY_PAGE_TEMPLATE,  static_cast<int32_t>(cfg.pageTemplateId));
     s.SetI32   (NVS_KEY_ROTATE_MINUTES, static_cast<int32_t>(cfg.rotationIntervalMinutes));
     s.SetString(NVS_KEY_TIME_ZONE_ID,   cfg.timeZoneId);
+    s.SetString(NVS_KEY_NEWS_FEEDS,     cfg.newsFeeds);
+    s.SetString(NVS_KEY_STOCK_SYMBOLS,  cfg.stockSymbols);
+    s.SetString(NVS_KEY_PORTFOLIO_POS,  cfg.portfolioPositions);
+    s.SetString(NVS_KEY_ECONOMIC_FEEDS, cfg.economicFeeds);
+    s.SetString(NVS_KEY_WORLD_ZONES,    cfg.worldClockZones);
+    s.SetString(NVS_KEY_FOCUS_LABEL,    cfg.focusLabel);
+    s.SetI32   (NVS_KEY_FOCUS_MINUTES,  clampFocusMinutes(cfg.focusMinutes));
+    s.SetI32   (NVS_KEY_FOCUS_BREAK_MIN,clampFocusBreakMinutes(cfg.focusBreakMinutes));
+    s.SetI32   (NVS_KEY_FOCUS_SESSIONS, clampFocusSessionCount(cfg.focusSessionCount));
+    s.SetBool  (NVS_KEY_INDOOR_ENABLED, cfg.indoorSensorEnabled);
+    s.SetString(NVS_KEY_INDOOR_ROOM,    cfg.indoorRoom);
     s.Commit();
 }

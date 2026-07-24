@@ -49,6 +49,21 @@ struct AppConfig {
     uint8_t  pageTemplateId;
     uint16_t rotationIntervalMinutes; // 0 disables automatic rotation.
     String   timeZoneId;              // IANA/POSIX-style zone ID.
+
+    // Data source configuration summaries. Secrets such as calendar URLs,
+    // API keys, and detailed positions are handled through source-specific
+    // APIs; GET APIs should expose only masked metadata or counts.
+    String   newsFeeds;               // CSV or newline-separated RSS/Atom URLs.
+    String   stockSymbols;            // CSV watchlist symbols.
+    String   portfolioPositions;      // Local sensitive portfolio config.
+    String   economicFeeds;           // CSV or newline-separated economic feeds.
+    String   worldClockZones;         // CSV/newline city rows, "Label|Timezone" or legacy "Timezone|Label".
+    String   focusLabel;              // Local focus clock title.
+    uint16_t focusMinutes;            // Focus block length in minutes.
+    uint16_t focusBreakMinutes;       // Break block length in minutes.
+    uint8_t  focusSessionCount;       // Focus cycles per session.
+    bool     indoorSensorEnabled;
+    String   indoorRoom;
 };
 
 // Load config from NVS into cfg. Missing keys use the defaults in nvs_table.h.

@@ -20,6 +20,7 @@ struct WakeInputs {
     PowerState currentState = PowerState::Interactive;
     WakeSignal signal = WakeSignal::None;
     uint32_t secondsSinceActivity = 0;
+    uint32_t interactiveIdleSeconds = 30;
     bool nightWindow = false;
     uint64_t deepSleepTimerUs = 0;
 };
@@ -32,7 +33,4 @@ struct PowerDecision {
 class WakeCoordinator {
 public:
     PowerDecision decide(const WakeInputs &input) const;
-
-private:
-    static constexpr uint32_t kInteractiveIdleSeconds = 30;
 };

@@ -305,6 +305,31 @@ def draw_world_clock(draw: ImageDraw.ImageDraw) -> None:
         draw_text(draw, (box[0] + 8, status_y), status, 8, fill=RED if accent else GRAY, anchor="lm")
 
 
+def draw_focus(draw: ImageDraw.ImageDraw) -> None:
+    draw_text(draw, (26, 76), "FOCUS COUNTDOWN", 7, fill=GRAY, bold=True, anchor="lm")
+    draw_text(draw, (200, 104), "25:00", 31, fill=RED, bold=True, mono=True, anchor="mm")
+    draw_text(draw, (200, 128), "IN FOCUS", 10, fill=BLACK, bold=True, anchor="mm")
+    line(draw, [(18, 138), (382, 138)], fill=LIGHT, width=1)
+
+    panel(draw, (18, 146, 168, 208), "SESSION")
+    draw_text(draw, (32, 176), "FOCUS 25 MIN", 12, bold=True, anchor="lm")
+    draw_text(draw, (32, 194), "BREAK 5 MIN", 9, fill=GRAY, bold=True, anchor="lm")
+    draw_text(draw, (102, 194), "CYCLE 1 OF 4", 7, fill=GRAY, anchor="lm")
+
+    panel(draw, (174, 146, 382, 208), "CONTROL")
+    draw_text(draw, (188, 176), "USER HOLD 2S", 14, bold=True, anchor="lm")
+    draw_text(draw, (188, 194), "START / STOP", 9, fill=RED, bold=True, anchor="lm")
+
+    panel(draw, (18, 218, 382, 268), "SCHEDULE")
+    draw_text(draw, (32, 242), "NEXT BREAK", 7, fill=GRAY, bold=True, anchor="lm")
+    draw_text(draw, (112, 242), "14:57", 16, fill=RED, bold=True, mono=True, anchor="lm")
+    draw_text(draw, (208, 242), "ENDS", 7, fill=GRAY, bold=True, anchor="lm")
+    draw_text(draw, (250, 242), "15:02", 16, bold=True, mono=True, anchor="lm")
+    line(draw, [(32, 251), (370, 251)], fill=LIGHT, width=1)
+    draw_text(draw, (32, 260), "WEB CONFIG: 25 / 5 MIN", 7, fill=GRAY, anchor="lm")
+    draw_text(draw, (280, 260), "LONG PRESS USER TO EXIT", 7, fill=GRAY, anchor="lm")
+
+
 def draw_news(draw: ImageDraw.ImageDraw) -> None:
     panel(draw, (18, 62, 382, 132), "TOP STORIES")
     draw_text(draw, (30, 105), "E-paper dashboard reaches Task 14 review", 11, bold=True, anchor="lm")
@@ -569,6 +594,7 @@ PAGES = [
     Page("ui-world-clock.png", "WORLD CLOCK", "clock", draw_world_clock),
     Page("ui-news.png", "HEADLINES", "news", draw_news),
     Page("ui-weather.png", "WEATHER TODAY", "weather", draw_weather_expanded),
+    Page("ui-focus.png", "FOCUS CLOCK", "clock", draw_focus),
     Page("ui-portfolio.png", "PORTFOLIO", "portfolio", draw_portfolio),
     Page("ui-economic-calendar.png", "ECONOMIC CALENDAR", "economic", draw_economic),
 ]
@@ -589,7 +615,7 @@ def save_pages(out_dir: Path) -> list[Path]:
 
 def save_weekly_weather_page(out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    image, draw = draw_shell("WEEKLY WEATHER", "weather", 6, 8)
+    image, draw = draw_shell("WEEKLY WEATHER", "weather", 6, 9)
     draw_weekly_weather(draw)
     out_path = out_dir / "ui-weekly-weather.png"
     image.save(out_path, optimize=True)
@@ -598,8 +624,8 @@ def save_weekly_weather_page(out_dir: Path) -> Path:
 
 def save_contact_sheet(paths: list[Path], out_dir: Path) -> Path:
     thumb_w, thumb_h = 800, 600
-    cols = 4
-    rows = 2
+    cols = 3
+    rows = (len(paths) + cols - 1) // cols
     gap = 40
     sheet = Image.new("RGB", (cols * thumb_w + (cols + 1) * gap, rows * thumb_h + (rows + 1) * gap), BG)
     for idx, path in enumerate(paths):
@@ -620,8 +646,10 @@ def main() -> None:
     out_dir = repo / "prototype"
     paths = save_pages(out_dir)
     save_contact_sheet(paths, out_dir)
+    weekly_weather_path = save_weekly_weather_page(out_dir)
     for path in paths:
         print(path)
+    print(weekly_weather_path)
     print(out_dir / "NM-EPD-420-UI-Prototype-Contact-Sheet.png")
 
 
