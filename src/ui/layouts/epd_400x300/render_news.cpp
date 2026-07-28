@@ -46,6 +46,10 @@ void renderNewsLayout(IDrawSurface &surface, const NewsPageSnapshot &snapshot,
                                        chrome.batteryText);
     surface.drawRect(18, 62, 364, 50, kDashboardBlack);
     surface.drawText(26, 75, "TOP STORIES", kDashboardAccent, TextAlign::Left, 1);
+    if (!snapshot.subtitle.empty()) {
+        surface.drawText(374, 75, calm_grid::fitText(surface, snapshot.subtitle, 116, 1),
+                         kDashboardBlack, TextAlign::Right, 1);
+    }
     surface.drawLine(26, 86, 374, 86, kDashboardBlack);
     if (!snapshot.headlines.empty()) {
         surface.drawText(28, 98,

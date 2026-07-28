@@ -59,6 +59,31 @@ void test_google_ical_metadata_is_configured_without_echoing_private_url() {
     TEST_ASSERT_EQUAL(-1, meta.maskedUrl.find("user%40example.com"));
 }
 
+void test_calendar_diagnostic_label_masks_private_url() {
+    const std::string label = calendarSourceDiagnosticLabel(
+        "https://calendar.google.com/calendar/ical/user%40example.com/private-token/basic.ics?token=SECRET1234");
+
+    TEST_ASSERT_EQUAL_STRING("https://calendar.google.com/...1234", label.c_str());
+    TEST_ASSERT_EQUAL(-1, label.find("private-token"));
+    TEST_ASSERT_EQUAL(-1, label.find("user%40example.com"));
+    TEST_ASSERT_EQUAL(-1, label.find("token="));
+    TEST_ASSERT_EQUAL(-1, label.find("SECRET"));
+}
+
+void test_calendar_diagnostic_hash_is_stable_after_normalization() {
+    const uint32_t httpsHash = calendarSourceDiagnosticHash(
+        " https://calendar.google.com/calendar/ical/user/basic.ics ");
+    const uint32_t webcalHash = calendarSourceDiagnosticHash(
+        "webcal://calendar.google.com/calendar/ical/user/basic.ics");
+    const uint32_t otherHash = calendarSourceDiagnosticHash(
+        "https://calendar.google.com/calendar/ical/user/other.ics");
+
+    TEST_ASSERT_NOT_EQUAL(0u, httpsHash);
+    TEST_ASSERT_EQUAL_UINT32(httpsHash, webcalHash);
+    TEST_ASSERT_NOT_EQUAL(httpsHash, otherHash);
+    TEST_ASSERT_EQUAL_UINT32(0u, calendarSourceDiagnosticHash("http://calendar.google.com/basic.ics"));
+}
+
 void test_read_secret_returns_empty_for_invalid_index() {
     MemorySecretBackend backend;
     CalendarSecretStore store(backend);
@@ -100,6 +125,8 @@ void setup() {
     RUN_TEST(test_uses_short_nvs_keys_for_twenty_calendar_sources);
     RUN_TEST(test_secret_metadata_masks_url_query_and_api_key);
     RUN_TEST(test_google_ical_metadata_is_configured_without_echoing_private_url);
+    RUN_TEST(test_calendar_diagnostic_label_masks_private_url);
+    RUN_TEST(test_calendar_diagnostic_hash_is_stable_after_normalization);
     RUN_TEST(test_read_secret_returns_empty_for_invalid_index);
     RUN_TEST(test_delete_source_removes_url_key_state_and_cache_marker);
     UNITY_END();

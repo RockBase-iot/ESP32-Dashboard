@@ -7,6 +7,8 @@
 #include "app/calendar/ics_parser.h"
 #include "app/calendar/calendar_models.cpp"
 #include "app/calendar/ics_line_reader.cpp"
+#include "app/time/timezone_catalog.cpp"
+#include "app/calendar/timezone_resolver.cpp"
 #include "app/calendar/ics_parser.cpp"
 
 namespace {
@@ -65,6 +67,29 @@ void test_google_fixture_parses_folded_escaped_utc_event() {
     TEST_ASSERT_EQUAL_INT64(1784314800LL, sink.events[0].endUtc);
 }
 
+void test_google_fixture_accepts_utf8_bom_before_vcalendar() {
+    const std::string ics =
+        "\xEF\xBB\xBF"
+        "BEGIN:VCALENDAR\r\n"
+        "\r\n"
+        "VERSION:2.0\r\n"
+        "BEGIN:VEVENT\r\n"
+        "UID:google-bom@example.com\r\n"
+        "DTSTART:20260728T020000Z\r\n"
+        "DTEND:20260728T030000Z\r\n"
+        "SUMMARY:Google calendar event\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n";
+    CollectingSink sink;
+
+    const auto result = parseText("calendar-google", ics, sink);
+
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SourceState::Ok),
+                            static_cast<uint8_t>(result.state));
+    TEST_ASSERT_EQUAL_UINT32(1, result.eventCount);
+    TEST_ASSERT_EQUAL_STRING("google-bom@example.com", sink.events[0].uid.c_str());
+}
+
 void test_outlook_fixture_parses_tzid_floating_and_duration() {
     const std::string ics =
         "BEGIN:VCALENDAR\n"
@@ -93,6 +118,58 @@ void test_outlook_fixture_parses_tzid_floating_and_duration() {
     TEST_ASSERT_TRUE(sink.events[0].startFloating);
     TEST_ASSERT_EQUAL_INT64(1784509200LL, sink.events[0].startUtc);
     TEST_ASSERT_EQUAL_INT64(1784511900LL, sink.events[0].endUtc);
+}
+
+void test_google_fixture_converts_windows_tzid_to_utc() {
+    const std::string ics =
+        "BEGIN:VCALENDAR\n"
+        "VERSION:2.0\n"
+        "BEGIN:VEVENT\n"
+        "UID:windows-tz@example.com\n"
+        "DTSTART;TZID=Pacific Standard Time:20260720T090000\n"
+        "DTEND;TZID=Pacific Standard Time:20260720T100000\n"
+        "SUMMARY:West coast review\n"
+        "END:VEVENT\n"
+        "END:VCALENDAR\n";
+    CollectingSink sink;
+
+    const auto result = parseText("calendar05", ics, sink);
+
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SourceState::Ok),
+                            static_cast<uint8_t>(result.state));
+    TEST_ASSERT_EQUAL_UINT32(1, result.eventCount);
+    TEST_ASSERT_EQUAL_STRING("Pacific Standard Time", sink.events[0].startTzid.c_str());
+    TEST_ASSERT_TRUE(sink.events[0].startFloating);
+    TEST_ASSERT_EQUAL_INT64(1784563200LL, sink.events[0].startUtc);
+    TEST_ASSERT_EQUAL_INT64(1784566800LL, sink.events[0].endUtc);
+}
+
+void test_floating_datetime_uses_default_device_timezone() {
+    const std::string ics =
+        "BEGIN:VCALENDAR\n"
+        "VERSION:2.0\n"
+        "BEGIN:VEVENT\n"
+        "UID:floating-default@example.com\n"
+        "DTSTART:20260720T090000\n"
+        "DURATION:PT30M\n"
+        "SUMMARY:Local floating event\n"
+        "END:VEVENT\n"
+        "END:VCALENDAR\n";
+    StringIcsByteReader bytes(ics);
+    IcsParser parser;
+    IcsParserOptions options;
+    options.defaultTimezoneId = "Asia/Shanghai";
+    CollectingSink sink;
+
+    const auto result = parser.parse("calendar06", bytes, sink, options);
+
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SourceState::Ok),
+                            static_cast<uint8_t>(result.state));
+    TEST_ASSERT_EQUAL_UINT32(1, result.eventCount);
+    TEST_ASSERT_TRUE(sink.events[0].startFloating);
+    TEST_ASSERT_EQUAL_STRING("Asia/Shanghai", sink.events[0].startTzid.c_str());
+    TEST_ASSERT_EQUAL_INT64(1784509200LL, sink.events[0].startUtc);
+    TEST_ASSERT_EQUAL_INT64(1784511000LL, sink.events[0].endUtc);
 }
 
 void test_apple_fixture_parses_all_day_status_and_recurrence_fields() {
@@ -166,15 +243,40 @@ void test_source_without_vcalendar_returns_parse_error() {
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SourceState::Parse),
                             static_cast<uint8_t>(result.state));
     TEST_ASSERT_EQUAL_UINT32(0, result.eventCount);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(IcsParseError::MissingCalendarBegin),
+                            static_cast<uint8_t>(result.error));
+}
+
+void test_truncated_calendar_reports_missing_calendar_end() {
+    const std::string ics =
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "BEGIN:VEVENT\r\n"
+        "UID:complete-event@example.com\r\n"
+        "DTSTART:20260728T020000Z\r\n"
+        "SUMMARY:Complete event in truncated calendar\r\n"
+        "END:VEVENT\r\n";
+    CollectingSink sink;
+
+    const auto result = parseText("calendar-truncated", ics, sink);
+
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SourceState::Parse),
+                            static_cast<uint8_t>(result.state));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(IcsParseError::MissingCalendarEnd),
+                            static_cast<uint8_t>(result.error));
 }
 
 void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_google_fixture_parses_folded_escaped_utc_event);
+    RUN_TEST(test_google_fixture_accepts_utf8_bom_before_vcalendar);
     RUN_TEST(test_outlook_fixture_parses_tzid_floating_and_duration);
+    RUN_TEST(test_google_fixture_converts_windows_tzid_to_utc);
+    RUN_TEST(test_floating_datetime_uses_default_device_timezone);
     RUN_TEST(test_apple_fixture_parses_all_day_status_and_recurrence_fields);
     RUN_TEST(test_malformed_event_is_skipped_and_later_event_survives);
     RUN_TEST(test_source_without_vcalendar_returns_parse_error);
+    RUN_TEST(test_truncated_calendar_reports_missing_calendar_end);
     UNITY_END();
 }
 

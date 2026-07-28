@@ -14,6 +14,8 @@ class  PageManager;
 class  DisplayPageState;
 struct AppConfig;
 struct CalendarPageSnapshot;
+struct CapacityProfile;
+struct PageSyncRequirements;
 class  String;
 namespace calm_grid { struct ChromeContext; }
 
@@ -86,22 +88,35 @@ private:
                                    const AppConfig &cfg,
                                    const String &localIP,
                                    const calm_grid::ChromeContext &chrome);
+    static void _ensurePageData(IBoard &board, DisplayPageState page,
+                                WeatherClass &weather,
+                                CalendarPageSnapshot &calendarSnapshot,
+                                PageSyncRequirements &completedRequirements,
+                                const AppConfig &cfg,
+                                String &localIP,
+                                const CapacityProfile &capacity,
+                                bool networkAvailable);
 
     // 2b-vi. Awake interactive window; BOOT=next, USER=previous.
     static DisplayPageState _runInteractiveWindow(IBoard &board, PageManager &pageManager,
                                                   DisplayPageState currentPage,
                                                   WeatherClass &weather,
-                                                  const CalendarPageSnapshot &calendarSnapshot,
+                                                  CalendarPageSnapshot &calendarSnapshot,
+                                                  PageSyncRequirements &completedRequirements,
                                                   const AppConfig &cfg,
-                                                  const String &localIP);
+                                                  String &localIP,
+                                                  const CapacityProfile &capacity,
+                                                  bool networkAvailable);
 
     // 2b-vii. Power-on config window (PortalSec > 0): web portal + buttons.
     static DisplayPageState _runConfigWindow(IBoard &board, PageManager &pageManager,
                                              DisplayPageState currentPage,
                                              WeatherClass &weather,
-                                             const CalendarPageSnapshot &calendarSnapshot,
+                                             CalendarPageSnapshot &calendarSnapshot,
+                                             PageSyncRequirements &completedRequirements,
                                              const AppConfig &cfg,
-                                             const String &localIP);
+                                             String &localIP,
+                                             const CapacityProfile &capacity);
     static DisplayPageState _runFocusClockSession(IBoard &board, PageManager &pageManager,
                                                   DisplayPageState currentPage,
                                                   WeatherClass &weather,

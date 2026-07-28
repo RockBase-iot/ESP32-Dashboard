@@ -28,6 +28,8 @@ static constexpr size_t kMaxConfigPatchBytes = 8192;
 
 static volatile uint32_t _lastRequestMs = 0;
 
+static void sendJson(AsyncWebServerRequest *req, JsonDocument &doc, int status = 200);
+
 static void touchActivity() {
     _lastRequestMs = millis();
 }
@@ -153,10 +155,50 @@ static SourceConfigSummary sourceSummaryFromRuntime(const AppConfig &cfg) {
     return summary;
 }
 
-static void sendJson(AsyncWebServerRequest *req, JsonDocument &doc, int status = 200) {
+static void sendJson(AsyncWebServerRequest *req, JsonDocument &doc, int status) {
     String out;
     serializeJson(doc, out);
     req->send(status, "application/json", out);
+}
+
+static String portalFallbackHtml() {
+    AppConfig cfg;
+    loadAppConfig(cfg);
+    String html;
+    html.reserve(3600);
+    html += F("<!doctype html><html><head><meta charset='utf-8'>");
+    html += F("<meta name='viewport' content='width=device-width,initial-scale=1'>");
+    html += F("<title>ESP32 Dashboard Setup</title>");
+    html += F("<style>");
+    html += F(":root{font-family:Inter,Arial,sans-serif;color:#17202a;background:#f5f7f9}");
+    html += F("body{margin:0;padding:22px}main{max-width:560px;margin:auto}");
+    html += F(".card{background:white;border:1px solid #d9e1e8;border-radius:8px;padding:18px;box-shadow:0 4px 18px rgba(20,38,55,.08)}");
+    html += F("h1{font-size:24px;margin:0 0 6px}.muted{color:#667789;font-size:14px;line-height:1.45}");
+    html += F("label{display:block;margin-top:14px;font-weight:700;font-size:13px}");
+    html += F("input{box-sizing:border-box;width:100%;padding:11px;margin-top:6px;border:1px solid #bcc8d4;border-radius:6px;font-size:15px}");
+    html += F("button{margin-top:16px;width:100%;padding:12px;border:0;border-radius:6px;background:#136f63;color:white;font-weight:800;font-size:15px}");
+    html += F("#msg{margin-top:12px;font-size:14px;white-space:pre-wrap}");
+    html += F("</style></head><body><main><div class='card'>");
+    html += F("<h1>ESP32 Dashboard Setup</h1>");
+    html += F("<p class='muted'>Built-in recovery page. Full web assets were not loaded, but WiFi setup is available.</p>");
+    html += F("<label>WiFi SSID</label><input id='ssid' autocomplete='off' value='");
+    html += cfg.wifiSsid;
+    html += F("'>");
+    html += F("<label>WiFi Password</label><input id='pwd' type='password' autocomplete='new-password' placeholder='Leave empty to keep current password'>");
+    html += F("<button onclick='save()'>Save WiFi Settings</button><div id='msg'></div>");
+    html += F("</div></main><script>");
+    html += F("async function save(){const m=document.getElementById('msg');");
+    html += F("const body={WifiSSID:ssid.value};if(pwd.value)body.WifiPSWD=pwd.value;");
+    html += F("m.textContent='Saving...';try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});");
+    html += F("const t=await r.text();m.textContent=r.ok?'Saved. Restart the device to apply WiFi.':('Save failed: '+t);}");
+    html += F("catch(e){m.textContent='Request failed: '+e;}}</script></body></html>");
+    return html;
+}
+
+static void sendPortalFallback(AsyncWebServerRequest *req) {
+    AsyncWebServerResponse *resp = req->beginResponse(200, "text/html", portalFallbackHtml());
+    resp->addHeader("Cache-Control", "no-cache");
+    req->send(resp);
 }
 
 static void appendReadinessJson(JsonObject obj, const PageReadiness *readiness) {
@@ -385,7 +427,10 @@ static bool saveCalendarSourcePatch(JsonObjectConst obj) {
     NvsSecretBackend backend;
     CalendarSecretStore store(backend);
     if (obj["delete"] | false) {
-        return store.deleteSource(source.index);
+        const bool deleted = store.deleteSource(source.index);
+        log_i(TAG_WS, "Calendar source delete: slot=%u ok=%d",
+              static_cast<unsigned>(source.index), deleted ? 1 : 0);
+        return deleted;
     }
     CalendarSourceSecrets existing;
     const bool hasExisting = store.loadSourceForDownload(source.index, existing);
@@ -403,7 +448,18 @@ static bool saveCalendarSourcePatch(JsonObjectConst obj) {
     }
     source.enabled = obj["enabled"] | true;
     source.color = static_cast<uint8_t>(obj["color"] | 0);
-    return store.saveSource(source);
+    log_i(TAG_WS,
+          "Calendar source save request: slot=%u enabled=%d newUrl=%d reusedUrl=%d urlHash=0x%08lx urlLen=%u alias=%d apiKey=%d",
+          static_cast<unsigned>(source.index), source.enabled ? 1 : 0,
+          (std::string(obj["url"] | "").empty() ? 0 : 1),
+          (std::string(obj["url"] | "").empty() && hasExisting) ? 1 : 0,
+          static_cast<unsigned long>(calendarSourceDiagnosticHash(source.url)),
+          static_cast<unsigned>(source.url.size()),
+          source.alias.empty() ? 0 : 1, source.apiKey.empty() ? 0 : 1);
+    const bool saved = store.saveSource(source);
+    log_i(TAG_WS, "Calendar source save result: slot=%u ok=%d",
+          static_cast<unsigned>(source.index), saved ? 1 : 0);
+    return saved;
 }
 
 static bool applySourcePatch(const char *source, const String &body) {
@@ -684,8 +740,8 @@ void WebServer::start() {
 
     auto serveGz = [](AsyncWebServerRequest *req, const char *path, const char *mime) {
         if (!LittleFS.exists(path)) {
-            req->send(503, "text/plain",
-                      "Web assets not uploaded. Run: pio run -e nm-display-420 -t upload_all");
+            log_w(TAG_WS, "Missing web asset %s; serving built-in setup fallback", path);
+            sendPortalFallback(req);
             return;
         }
         AsyncWebServerResponse *resp = req->beginResponse(LittleFS, path, mime);
@@ -773,9 +829,14 @@ void WebServer::start() {
         ESP.restart();
     });
 
-    _ws.onNotFound([](AsyncWebServerRequest *req) {
+    _ws.onNotFound([serveGz](AsyncWebServerRequest *req) {
         touchActivity();
-        req->send(404, "text/plain", "Not found");
+        const String url = req->url();
+        if (url.startsWith("/api/")) {
+            req->send(404, "text/plain", "Not found");
+            return;
+        }
+        serveGz(req, "/index.html.gz", "text/html");
     });
 
     _ws.begin();

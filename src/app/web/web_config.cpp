@@ -12,7 +12,7 @@ static volatile bool  _saved = false;
 
 void WebConfig::start(const char *ap_ssid) {
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(ap_ssid);
+    WiFi.softAP(ap_ssid, "12345678");
     log_i(TAG, "AP started: %s  IP=%s", ap_ssid,
           WiFi.softAPIP().toString().c_str());
 

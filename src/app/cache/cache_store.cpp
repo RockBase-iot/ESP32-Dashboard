@@ -1,5 +1,7 @@
 #include "cache_store.h"
 
+#include <LittleFS.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <utility>
@@ -104,6 +106,76 @@ bool MemoryCacheBackend::renameFile(const std::string &from, const std::string &
     _files[to] = it->second;
     _files.erase(it);
     return true;
+}
+
+namespace {
+bool ensureParentDirectories(const std::string &path) {
+    size_t slash = 0;
+    while (true) {
+        slash = path.find('/', slash + 1);
+        if (slash == std::string::npos) {
+            return true;
+        }
+        if (slash == 0) {
+            continue;
+        }
+        const std::string dir = path.substr(0, slash);
+        if (!LittleFS.exists(dir.c_str()) && !LittleFS.mkdir(dir.c_str())) {
+            return false;
+        }
+    }
+}
+}  // namespace
+
+bool LittleFsCacheBackend::exists(const std::string &path) const {
+    return LittleFS.exists(path.c_str());
+}
+
+bool LittleFsCacheBackend::readFile(const std::string &path, std::vector<uint8_t> &out) const {
+    if (!LittleFS.exists(path.c_str())) {
+        return false;
+    }
+    File file = LittleFS.open(path.c_str(), "r");
+    if (!file) {
+        return false;
+    }
+    out.clear();
+    out.reserve(static_cast<size_t>(file.size()));
+    while (file.available()) {
+        out.push_back(static_cast<uint8_t>(file.read()));
+    }
+    file.close();
+    return true;
+}
+
+bool LittleFsCacheBackend::writeFile(const std::string &path, const std::vector<uint8_t> &data) {
+    if (!ensureParentDirectories(path)) {
+        return false;
+    }
+    File file = LittleFS.open(path.c_str(), "w");
+    if (!file) {
+        return false;
+    }
+    const size_t written = file.write(data.data(), data.size());
+    file.close();
+    return written == data.size();
+}
+
+bool LittleFsCacheBackend::removeFile(const std::string &path) {
+    if (!LittleFS.exists(path.c_str())) {
+        return true;
+    }
+    return LittleFS.remove(path.c_str());
+}
+
+bool LittleFsCacheBackend::renameFile(const std::string &from, const std::string &to) {
+    if (!ensureParentDirectories(to)) {
+        return false;
+    }
+    if (LittleFS.exists(to.c_str()) && !LittleFS.remove(to.c_str())) {
+        return false;
+    }
+    return LittleFS.rename(from.c_str(), to.c_str());
 }
 
 CacheStore::CacheStore(ICacheBackend &backend, std::string rootPath)

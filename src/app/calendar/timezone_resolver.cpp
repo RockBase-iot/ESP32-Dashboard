@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cctype>
 
+#include "app/time/timezone_catalog.h"
+
 namespace {
 int64_t timezoneResolverDaysFromCivil(int year, unsigned month, unsigned day) {
     year -= month <= 2;
@@ -12,19 +14,6 @@ int64_t timezoneResolverDaysFromCivil(int year, unsigned month, unsigned day) {
                          day - 1;
     const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     return static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(doe) - 719468LL;
-}
-
-void timezoneResolverCivilFromDays(int64_t z, int &year, unsigned &month, unsigned &day) {
-    z += 719468LL;
-    const int era = static_cast<int>((z >= 0 ? z : z - 146096) / 146097);
-    const unsigned doe = static_cast<unsigned>(z - static_cast<int64_t>(era) * 146097);
-    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    year = static_cast<int>(yoe) + era * 400;
-    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    const unsigned mp = (5 * doy + 2) / 153;
-    day = doy - (153 * mp + 2) / 5 + 1;
-    month = mp + (mp < 10 ? 3 : static_cast<unsigned>(-9));
-    year += (month <= 2);
 }
 
 int dayOfWeek(int year, int month, int day) {
@@ -58,41 +47,19 @@ int64_t localEpoch(const LocalDateTime &local) {
            local.second;
 }
 
-LocalDateTime utcToLocalDateTime(int64_t utc, int offsetSeconds) {
-    const int64_t local = utc + offsetSeconds;
-    const int64_t days = local / 86400LL;
-    int rem = static_cast<int>(local % 86400LL);
-    if (rem < 0) {
-        rem += 86400;
-    }
-    int year = 1970;
-    unsigned month = 1;
-    unsigned day = 1;
-    timezoneResolverCivilFromDays(days, year, month, day);
-    LocalDateTime out;
-    out.year = year;
-    out.month = static_cast<int>(month);
-    out.day = static_cast<int>(day);
-    out.hour = rem / 3600;
-    out.minute = (rem % 3600) / 60;
-    out.second = rem % 60;
-    return out;
-}
-
 bool isUtcZone(const std::string &timezoneId) {
-    return timezoneId == "Etc/UTC" || timezoneId == "UTC" || timezoneId == "Etc/GMT" ||
-           timezoneId == "GMT";
+    const std::string canonical = canonicalTimezoneId(timezoneId);
+    return canonical == "Etc/UTC" || canonical == "UTC" || canonical == "Etc/GMT" ||
+           canonical == "GMT";
 }
 
 int offsetForUtcZone(const std::string &timezoneId) {
-    if (timezoneId == "Asia/Shanghai") return 8 * 3600;
-    if (timezoneId == "Asia/Tokyo") return 9 * 3600;
-    if (timezoneId == "Europe/Berlin") return 3600;
-    if (timezoneId == "Europe/London") return 0;
-    if (timezoneId == "America/Denver") return -7 * 3600;
-    if (timezoneId == "America/Chicago") return -6 * 3600;
-    if (timezoneId == "America/New_York") return -5 * 3600;
-    if (timezoneId == "America/Los_Angeles") return -8 * 3600;
+    const std::string canonical = canonicalTimezoneId(timezoneId);
+    for (const TimezoneCatalogEntry &entry : timezoneCatalog()) {
+        if (canonical == entry.iana) {
+            return entry.standardOffsetSeconds;
+        }
+    }
     return 0;
 }
 
@@ -121,56 +88,53 @@ bool inEuropeDst(const std::string &timezoneId, const LocalDateTime &local) {
 }
 
 int offsetSecondsForLocal(const std::string &timezoneId, const LocalDateTime &local) {
-    if (isUtcZone(timezoneId)) {
+    const std::string canonical = canonicalTimezoneId(timezoneId);
+    if (isUtcZone(canonical)) {
         return 0;
     }
-    if (timezoneId == "America/New_York") {
+    if (canonical == "America/New_York" || canonical == "America/Toronto") {
         return inNewYorkDst(local) ? -4 * 3600 : -5 * 3600;
     }
-    if (timezoneId == "America/Chicago") {
+    if (canonical == "America/Chicago") {
         const LocalDateTime shifted = local;
         return inNewYorkDst(shifted) ? -5 * 3600 : -6 * 3600;
     }
-    if (timezoneId == "America/Denver") {
+    if (canonical == "America/Denver") {
         const LocalDateTime shifted = local;
         return inNewYorkDst(shifted) ? -6 * 3600 : -7 * 3600;
     }
-    if (timezoneId == "America/Los_Angeles") {
+    if (canonical == "America/Los_Angeles" || canonical == "America/Vancouver") {
         const LocalDateTime shifted = local;
         return inNewYorkDst(shifted) ? -7 * 3600 : -8 * 3600;
     }
-    if (timezoneId == "Europe/London") {
-        return inEuropeDst(timezoneId, local) ? 3600 : 0;
+    if (canonical == "America/Anchorage") {
+        const LocalDateTime shifted = local;
+        return inNewYorkDst(shifted) ? -8 * 3600 : -9 * 3600;
     }
-    if (timezoneId == "Europe/Berlin") {
-        return inEuropeDst(timezoneId, local) ? 2 * 3600 : 3600;
+    if (canonical == "Europe/London") {
+        return inEuropeDst(canonical, local) ? 3600 : 0;
     }
-    if (timezoneId == "Asia/Shanghai") {
-        return 8 * 3600;
+    if (canonical.rfind("Europe/", 0) == 0) {
+        const int standard = offsetForUtcZone(canonical);
+        for (const TimezoneCatalogEntry &entry : timezoneCatalog()) {
+            if (canonical == entry.iana && !entry.observesDst) {
+                return entry.standardOffsetSeconds;
+            }
+        }
+        return inEuropeDst(canonical, local) ? standard + 3600 : standard;
     }
-    if (timezoneId == "Asia/Tokyo") {
-        return 9 * 3600;
+    if (canonical == "Australia/Sydney" || canonical == "Australia/Melbourne") {
+        return timezoneOffsetSecondsAtUtc(canonical, localEpoch(local) - 10 * 3600);
     }
-    return 0;
+    return offsetForUtcZone(canonical);
 }
 
 int offsetSecondsForUtc(const std::string &timezoneId, int64_t utc) {
-    if (isUtcZone(timezoneId)) {
+    const std::string canonical = canonicalTimezoneId(timezoneId);
+    if (isUtcZone(canonical)) {
         return 0;
     }
-    if (timezoneId == "America/New_York") {
-        const LocalDateTime localStd = utcToLocalDateTime(utc, -5 * 3600);
-        return inNewYorkDst(localStd) ? -4 * 3600 : -5 * 3600;
-    }
-    if (timezoneId == "Europe/London") {
-        const LocalDateTime localStd = utcToLocalDateTime(utc, 0);
-        return inEuropeDst(timezoneId, localStd) ? 3600 : 0;
-    }
-    if (timezoneId == "Europe/Berlin") {
-        const LocalDateTime localStd = utcToLocalDateTime(utc, 3600);
-        return inEuropeDst(timezoneId, localStd) ? 2 * 3600 : 3600;
-    }
-    return offsetForUtcZone(timezoneId);
+    return timezoneOffsetSecondsAtUtc(canonical, utc);
 }
 }  // namespace
 

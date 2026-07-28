@@ -292,6 +292,37 @@ public:
         return wake;
     }
 
+    LightWake timerOnlyLightSleepMs(uint32_t maxMs) override {
+        pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
+        pinMode(PIN_AP_BTN, INPUT_PULLUP);
+
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+        const esp_err_t timerErr = maxMs > 0
+            ? esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(maxMs) * 1000ULL)
+            : ESP_OK;
+        if (timerErr != ESP_OK) {
+            log_e(TAG, "Timer-only light sleep setup failed: maxMs=%lu timer=%d",
+                  static_cast<unsigned long>(maxMs), static_cast<int>(timerErr));
+            return LightWake::Other;
+        }
+
+        Serial.flush();
+        esp_light_sleep_start();
+
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+        const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+        const LightWake wake = classifyLightWake(cause == ESP_SLEEP_WAKEUP_TIMER,
+                                                 /*gpioFired=*/false,
+                                                 /*gpioWakeStatus=*/0,
+                                                 /*bootPin=*/0xFF,
+                                                 /*userPin=*/0xFF,
+                                                 /*bootPressedNow=*/false,
+                                                 /*userPressedNow=*/false);
+        log_i(TAG, "Timer-only light sleep returned: cause=%d wake=%d",
+              static_cast<int>(cause), static_cast<int>(wake));
+        return wake;
+    }
+
     uint8_t bootButtonPin() const override { return PIN_BOOT_BTN; }
     uint8_t apButtonPin()   const override { return PIN_AP_BTN; }
 

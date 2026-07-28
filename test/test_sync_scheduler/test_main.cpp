@@ -82,12 +82,26 @@ void test_display_page_sync_requirements_match_visible_page() {
     TEST_ASSERT_TRUE(req.news);
 }
 
+void test_missing_sync_requirements_detects_calendar_after_weather_home() {
+    PageSyncRequirements completed;
+    completed.weather = true;
+    const PageSyncRequirements agenda = syncRequirementsForDisplayPage(false, PageId::TodayAgenda);
+
+    const PageSyncRequirements missing = missingSyncRequirements(agenda, completed);
+
+    TEST_ASSERT_FALSE(missing.weather);
+    TEST_ASSERT_TRUE(missing.calendar);
+    TEST_ASSERT_FALSE(missing.finance);
+    TEST_ASSERT_FALSE(missing.news);
+}
+
 void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_unreferenced_provider_is_not_selected);
     RUN_TEST(test_retry_after_blocks_rate_limited_provider);
     RUN_TEST(test_ttl_controls_due_provider_selection);
     RUN_TEST(test_display_page_sync_requirements_match_visible_page);
+    RUN_TEST(test_missing_sync_requirements_detects_calendar_after_weather_home);
     UNITY_END();
 }
 

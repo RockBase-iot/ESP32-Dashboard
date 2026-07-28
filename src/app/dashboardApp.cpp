@@ -1,9 +1,11 @@
 #include "dashboardApp.h"
 #include "bsp/IBoard.h"
+#include "app/cache/cache_store.h"
 #include "app/display/display_page_state.h"
 #include "app/calendar/calendar_page_adapter.h"
 #include "app/calendar/ics_parser.h"
 #include "app/calendar/recurrence_engine.h"
+#include "app/calendar/timezone_resolver.h"
 #include "app/finance/economic_feed_provider.h"
 #include "app/finance/portfolio_store.h"
 #include "app/finance/stooq_csv_provider.h"
@@ -15,6 +17,7 @@
 #include "app/render/render_coordinator.h"
 #include "app/scheduler/sync_scheduler.h"
 #include "app/security/secret_store.h"
+#include "app/source/source_runtime_cache.h"
 #include "app/time/focus_clock_controller.h"
 #include "app/time/focus_clock_model.h"
 #include "ui/ui_layout.h"
@@ -28,6 +31,7 @@
 #include "ui/layouts/epd_400x300/render_overview.h"
 #include "ui/layouts/epd_400x300/render_time.h"
 #include "ui/layouts/epd_400x300/render_weather.h"
+#include "app/weather/weather_page_adapter.h"
 #endif
 #include "app/config/app_config.h"
 #include "app/memory/capacity_profile.h"
@@ -36,6 +40,8 @@
 #include "app/web/web_server.h"
 #include "app/locale/locale_mgr.h"
 #include "utils/logger.h"
+#include <DNSServer.h>
+#include <LittleFS.h>
 #include <WiFi.h>
 #include <algorithm>
 #include <array>
@@ -69,6 +75,8 @@ namespace {
 FinancePageSnapshot gFinanceSnapshot;
 NewsPageSnapshot gNewsSnapshot;
 #endif
+
+constexpr uint32_t kFocusButtonPollSleepMs = 500UL;
 
 const char *buttonActionName(ButtonAction action) {
     switch (action) {
@@ -234,7 +242,16 @@ float toDisplayDistanceKm(float km, const AppConfig &cfg) {
 
 WeatherPageSnapshot buildWeatherPageSnapshot(const WeatherClass &weather, const AppConfig &cfg) {
     if (!weather.weather().valid) {
-        return sampleWeatherPageSnapshot();
+        const WeatherLocationParts location = splitWeatherLocation(cfg.city);
+        TimezoneResolver resolver;
+        const int64_t localEpoch = resolver.fromUtc(cfg.timeZoneId.c_str(),
+                                                    static_cast<int64_t>(time(nullptr)));
+        return weatherFallbackPageSnapshot(
+            location.city.empty() ? "WEATHER" : location.city,
+            location.region,
+            location.country,
+            cfg.unitsTemp == "F" ? "F" : "C",
+            localEpoch);
     }
 
     const WeatherData &data = weather.weather();
@@ -307,7 +324,8 @@ uint32_t dashboardContentHash(PageId page, const WeatherClass &weather,
     hash = fnv1aAdd(hash, batteryMv);
     hash = fnv1aAddString(hash, cfg.timeZoneId);
     hash = fnv1aAddString(hash, cfg.timeFormat);
-    if (page == PageId::WeatherToday) {
+    if (page == PageId::WeatherToday || page == PageId::WeeklyWeather ||
+        page == PageId::IndoorClimate) {
         const WeatherData &data = weather.weather();
         const AirQualityData &aqi = weather.airQuality();
         hash = fnv1aAddString(hash, cfg.city);
@@ -352,6 +370,19 @@ uint32_t displayContentHash(DisplayPageState page, const WeatherClass &weather,
 
 bool isFocusDisplayPage(DisplayPageState page) {
     return !page.isHomeWeather() && page.managedPage() == PageId::FocusClock;
+}
+
+bool ensureRuntimeCacheFsMounted() {
+    static bool attempted = false;
+    static bool mounted = false;
+    if (!attempted) {
+        attempted = true;
+        mounted = LittleFS.begin(false, "/littlefs", 3, kWebAssetsPartitionLabel);
+        if (!mounted) {
+            log_w(TAG, "LittleFS cache unavailable; source stale fallback disabled");
+        }
+    }
+    return mounted;
 }
 
 std::string chromeIpText(const String &localIP) {
@@ -402,6 +433,10 @@ std::string calendarSourceIdForIndex(uint8_t index) {
     return std::string(buffer);
 }
 
+const char *calendarBoolText(bool value) {
+    return value ? "yes" : "no";
+}
+
 class CalendarVectorSink final : public IcsEventSink {
 public:
     explicit CalendarVectorSink(std::string sourceLabel) : _sourceLabel(std::move(sourceLabel)) {}
@@ -429,59 +464,182 @@ CalendarPageSnapshot syncCalendarPageSnapshot(const AppConfig &cfg, int64_t nowU
     const auto certEnd = _binary_src_assets_certs_mozilla_crt_bundle_bin_end;
     SecureHttpClient http(certStart, static_cast<size_t>(certEnd - certStart));
     IcsParser parser;
+    IcsParserOptions parserOptions;
+    parserOptions.defaultTimezoneId = cfg.timeZoneId.c_str();
+    LittleFsCacheBackend cacheBackend;
+    CacheStore cache(cacheBackend, "/cache");
+    const bool cacheReady = ensureRuntimeCacheFsMounted();
 
     std::vector<CalendarEvent> rawEvents;
     uint8_t enabledSources = 0;
+    bool usedStaleCalendar = false;
+    log_i(TAG,
+          "Calendar sync begin: nowUtc=%lld tz=%s slots=%u maxBytes=%u cacheReady=%s",
+          static_cast<long long>(nowUtc), cfg.timeZoneId.c_str(),
+          static_cast<unsigned>(capacity.calendarSlots),
+          static_cast<unsigned>(capacity.maxSourceBytes),
+          calendarBoolText(cacheReady));
     for (uint8_t i = 0; i < capacity.calendarSlots && i < CALENDAR_SOURCE_MAX_COUNT; ++i) {
         CalendarSourceSecrets source;
-        if (!store.loadSourceForDownload(i, source) || !source.enabled) {
+        if (!store.loadSourceForDownload(i, source)) {
+            log_d(TAG, "Calendar source slot=%u skipped: not configured or invalid",
+                  static_cast<unsigned>(i));
+            continue;
+        }
+        if (!source.enabled) {
+            log_i(TAG, "Calendar source slot=%u skipped: disabled label=%s urlHash=0x%08lx",
+                  static_cast<unsigned>(i),
+                  calendarSourceDiagnosticLabel(source.url).c_str(),
+                  static_cast<unsigned long>(calendarSourceDiagnosticHash(source.url)));
             continue;
         }
         ++enabledSources;
+        const std::string sourceId = calendarSourceIdForIndex(i);
 
         SecureHttpRequest request;
         request.url = source.url;
         request.maxBytes = capacity.maxSourceBytes;
+        backend.getString(calendarSourceEtagKey(i), request.etag);
+        backend.getString(calendarSourceLastModifiedKey(i), request.lastModified);
+        log_i(TAG,
+              "Calendar source %u fetch begin: id=%s label=%s urlHash=0x%08lx maxBytes=%u etag=%s lastModified=%s",
+              static_cast<unsigned>(i), sourceId.c_str(),
+              calendarSourceDiagnosticLabel(source.url).c_str(),
+              static_cast<unsigned long>(calendarSourceDiagnosticHash(source.url)),
+              static_cast<unsigned>(request.maxBytes),
+              calendarBoolText(!request.etag.empty()),
+              calendarBoolText(!request.lastModified.empty()));
         const SecureHttpResponse response = http.get(request);
-        if (response.state != SourceState::Ok || response.payload.empty()) {
+        log_i(TAG,
+              "Calendar source %u HTTP result: state=%s status=%d bytes=%u declared=%ld stream=%ld complete=%s transfer=%s encoding=%s type=%s notModified=%s etag=%s lastModified=%s",
+              static_cast<unsigned>(i), sourceStateName(response.state),
+              response.statusCode, static_cast<unsigned>(response.bytesRead),
+              static_cast<long>(response.declaredSize),
+              static_cast<long>(response.streamResult),
+              calendarBoolText(response.complete),
+              response.transferEncoding.empty() ? "identity" : response.transferEncoding.c_str(),
+              response.contentEncoding.empty() ? "identity" : response.contentEncoding.c_str(),
+              response.contentType.empty() ? "unknown" : response.contentType.c_str(),
+              calendarBoolText(response.notModified),
+              calendarBoolText(!response.etag.empty()),
+              calendarBoolText(!response.lastModified.empty()));
+        RuntimeSourcePayload runtimePayload;
+        const std::string cacheCategory = std::string("calendar/") + sourceId;
+        if (response.state == SourceState::Ok && !response.payload.empty()) {
+            runtimePayload.status.state = SourceState::Ok;
+            runtimePayload.status.sourceId = cacheCategory;
+            runtimePayload.status.lastAttemptUtc = nowUtc;
+            runtimePayload.status.lastSuccessUtc = nowUtc;
+            runtimePayload.status.itemCount = static_cast<uint32_t>(response.payload.size());
+            runtimePayload.payload = response.payload;
+            runtimePayload.message = "Live data pending validation";
+        } else if (response.notModified && cacheReady) {
+            const CacheReadResult cached = cache.read(cacheCategory);
+            if (cached.ok) {
+                runtimePayload.status.state = SourceState::Ok;
+                runtimePayload.status.sourceId = cacheCategory;
+                runtimePayload.status.lastAttemptUtc = nowUtc;
+                runtimePayload.status.lastSuccessUtc = cached.updatedUtc;
+                runtimePayload.status.itemCount = static_cast<uint32_t>(cached.payload.size());
+                runtimePayload.payload = cached.payload;
+                runtimePayload.fromCache = true;
+                runtimePayload.message = "Not modified; using validated cache";
+            } else {
+                runtimePayload.status.state = SourceState::Stale;
+                runtimePayload.empty = true;
+                runtimePayload.message = "Calendar returned not-modified but cache is unavailable";
+            }
+        } else if (cacheReady) {
+            runtimePayload = resolveRuntimeSourcePayload(
+                cache, cacheCategory, response, nowUtc,
+                "Calendar source has no live data and no cache");
+        } else {
+            runtimePayload.status.state = response.state;
+            runtimePayload.payload = response.payload;
+            runtimePayload.empty = response.state != SourceState::Ok || response.payload.empty();
+            runtimePayload.message = "Calendar cache unavailable";
+        }
+        log_i(TAG,
+              "Calendar source %u payload: state=%s fromCache=%s empty=%s payload=%u message=%s",
+              static_cast<unsigned>(i), sourceStateName(runtimePayload.status.state),
+              calendarBoolText(runtimePayload.fromCache),
+              calendarBoolText(runtimePayload.empty),
+              static_cast<unsigned>(runtimePayload.payload.size()),
+              runtimePayload.message.c_str());
+        if (runtimePayload.empty || runtimePayload.payload.empty()) {
             backend.setString(calendarSourceErrorKey(i),
-                              std::to_string(static_cast<int>(response.state)));
+                              std::to_string(static_cast<int>(runtimePayload.status.state)));
             backend.commit();
-            log_w(TAG, "Calendar source %u fetch failed: state=%u status=%d bytes=%u",
-                  static_cast<unsigned>(i), static_cast<unsigned>(response.state),
-                  response.statusCode, static_cast<unsigned>(response.bytesRead));
+            log_w(TAG, "Calendar source %u fetch failed: state=%s status=%d bytes=%u payload=%u",
+                  static_cast<unsigned>(i), sourceStateName(runtimePayload.status.state),
+                  response.statusCode, static_cast<unsigned>(response.bytesRead),
+                  static_cast<unsigned>(runtimePayload.payload.size()));
             continue;
         }
 
-        const std::string sourceId = calendarSourceIdForIndex(i);
         const std::string sourceLabel = source.alias.empty() ? sourceId : source.alias;
-        StringIcsByteReader reader(std::string(response.payload.begin(), response.payload.end()));
+        usedStaleCalendar = usedStaleCalendar ||
+                            runtimePayload.status.state == SourceState::Stale;
+        StringIcsByteReader reader(std::string(runtimePayload.payload.begin(),
+                                               runtimePayload.payload.end()));
         CalendarVectorSink sink(sourceLabel);
-        const IcsParseResult parsed = parser.parse(sourceId, reader, sink);
+        const IcsParseResult parsed = parser.parse(sourceId, reader, sink, parserOptions);
         if (parsed.state != SourceState::Ok) {
             backend.setString(calendarSourceErrorKey(i),
                               std::to_string(static_cast<int>(SourceState::Parse)));
             backend.commit();
-            log_w(TAG, "Calendar source %u parse failed: bytes=%u events=%u skipped=%u",
-                  static_cast<unsigned>(i), static_cast<unsigned>(parsed.byteCount),
+            log_w(TAG, "Calendar source %u parse failed: state=%s reason=%s bytes=%u lines=%u events=%u skipped=%u",
+                  static_cast<unsigned>(i), sourceStateName(parsed.state),
+                  icsParseErrorName(parsed.error),
+                  static_cast<unsigned>(parsed.byteCount),
+                  static_cast<unsigned>(parsed.lineCount),
                   static_cast<unsigned>(parsed.eventCount),
                   static_cast<unsigned>(parsed.skippedCount));
             continue;
         }
 
-        backend.setString(calendarSourceEtagKey(i), response.etag);
-        backend.setString(calendarSourceLastModifiedKey(i), response.lastModified);
-        backend.remove(calendarSourceErrorKey(i));
+        bool cacheSaved = false;
+        if (!runtimePayload.fromCache && cacheReady) {
+            cacheSaved = cache.write(cacheCategory, runtimePayload.payload, nowUtc);
+            log_i(TAG, "Calendar source %u validated cache write: ok=%s bytes=%u",
+                  static_cast<unsigned>(i), calendarBoolText(cacheSaved),
+                  static_cast<unsigned>(runtimePayload.payload.size()));
+        }
+        if (!runtimePayload.fromCache) {
+            backend.setString(calendarSourceEtagKey(i), response.etag);
+            backend.setString(calendarSourceLastModifiedKey(i), response.lastModified);
+            if (cacheSaved) {
+                backend.setString(calendarSourceCacheMarkerKey(i), "1");
+            }
+            backend.remove(calendarSourceErrorKey(i));
+        } else if (response.notModified) {
+            backend.remove(calendarSourceErrorKey(i));
+        } else {
+            backend.setString(calendarSourceErrorKey(i), "stale");
+        }
         backend.commit();
         rawEvents.insert(rawEvents.end(), sink.events.begin(), sink.events.end());
-        log_i(TAG, "Calendar source %u OK: bytes=%u events=%u skipped=%u",
-              static_cast<unsigned>(i), static_cast<unsigned>(response.bytesRead),
+        log_i(TAG, "Calendar source %u %s: bytes=%u parsed=%u accepted=%u skipped=%u totalRaw=%u",
+              static_cast<unsigned>(i), runtimePayload.fromCache ? "STALE" : "OK",
+              static_cast<unsigned>(runtimePayload.payload.size()),
               static_cast<unsigned>(parsed.eventCount),
-              static_cast<unsigned>(parsed.skippedCount));
+              static_cast<unsigned>(sink.events.size()),
+              static_cast<unsigned>(parsed.skippedCount),
+              static_cast<unsigned>(rawEvents.size()));
     }
 
     if (enabledSources == 0) {
-        return sampleCalendarPageSnapshot();
+        log_w(TAG, "Calendar sync result: no enabled calendar sources");
+        return calendarEmptyStateSnapshot(CalendarEmptyStateKind::SetupRequired, nowUtc,
+                                          cfg.timeZoneId.c_str(),
+                                          isTwentyFourHourFormat(cfg.timeFormat));
+    }
+    if (rawEvents.empty()) {
+        log_w(TAG, "Calendar sync result: enabledSources=%u but no parsed events",
+              static_cast<unsigned>(enabledSources));
+        return calendarEmptyStateSnapshot(CalendarEmptyStateKind::NoUsableData, nowUtc,
+                                          cfg.timeZoneId.c_str(),
+                                          isTwentyFourHourFormat(cfg.timeFormat));
     }
 
     SourceState recurrenceState = SourceState::Ok;
@@ -494,14 +652,41 @@ CalendarPageSnapshot syncCalendarPageSnapshot(const AppConfig &cfg, int64_t nowU
     std::vector<CalendarEvent> events = recurrence.expand(rawEvents, window,
                                                           cfg.timeZoneId.c_str(),
                                                           recurrenceState);
+    log_i(TAG,
+          "Calendar recurrence: raw=%u expanded=%u window=[%lld,%lld] capacity=%u state=%s",
+          static_cast<unsigned>(rawEvents.size()),
+          static_cast<unsigned>(events.size()),
+          static_cast<long long>(window.startUtc),
+          static_cast<long long>(window.endUtc),
+          static_cast<unsigned>(window.capacity),
+          sourceStateName(recurrenceState));
     if (recurrenceState != SourceState::Ok) {
         log_w(TAG, "Calendar recurrence expansion state=%u, using parsed events",
               static_cast<unsigned>(recurrenceState));
         events = rawEvents;
     }
 
-    return calendarPageSnapshotFromEvents(events, nowUtc, cfg.timeZoneId.c_str(),
-                                          isTwentyFourHourFormat(cfg.timeFormat));
+    CalendarPageSnapshot snapshot =
+        calendarPageSnapshotFromEvents(events, nowUtc, cfg.timeZoneId.c_str(),
+                                       isTwentyFourHourFormat(cfg.timeFormat));
+    log_i(TAG,
+          "Calendar snapshot: overview=%u timeline=%u agenda=%u weekCells=%u stale=%s subtitle=%s",
+          static_cast<unsigned>(snapshot.overviewItems.size()),
+          static_cast<unsigned>(snapshot.timelineItems.size()),
+          static_cast<unsigned>(snapshot.agendaItems.size()),
+          static_cast<unsigned>(snapshot.weekCells.size()),
+          calendarBoolText(usedStaleCalendar),
+          snapshot.subtitle.c_str());
+    if (usedStaleCalendar) {
+        snapshot.subtitle = "Calendar stale";
+        if (!snapshot.notes.empty()) {
+            snapshot.notes[0] = "Showing cached calendar";
+        }
+        if (!snapshot.milestones.empty()) {
+            snapshot.milestones[0] = "Latest sync failed";
+        }
+    }
+    return snapshot;
 }
 
 #if defined(UI_LAYOUT_EPD_400x300)
@@ -561,10 +746,6 @@ std::string formatSyncTimeText(int64_t nowUtc) {
     return buffer;
 }
 
-std::string payloadToString(const SecureHttpResponse &response) {
-    return std::string(response.payload.begin(), response.payload.end());
-}
-
 SecureHttpResponse fetchDashboardText(SecureHttpClient &http, const std::string &url,
                                       uint32_t maxBytes) {
     SecureHttpRequest request;
@@ -572,6 +753,35 @@ SecureHttpResponse fetchDashboardText(SecureHttpClient &http, const std::string 
     request.maxBytes = maxBytes;
     request.redirectLimit = CALENDAR_REDIRECT_MAX_HOPS;
     return http.get(request);
+}
+
+RuntimeSourcePayload fetchDashboardTextCached(SecureHttpClient &http, CacheStore &cache,
+                                              const std::string &category,
+                                              const std::string &url, uint32_t maxBytes,
+                                              int64_t nowUtc,
+                                              const std::string &emptyMessage) {
+    const SecureHttpResponse response = fetchDashboardText(http, url, maxBytes);
+    return resolveRuntimeSourcePayload(cache, category, response, nowUtc, emptyMessage);
+}
+
+RuntimeSourcePayload fetchDashboardTextRuntime(SecureHttpClient &http, CacheStore &cache,
+                                               bool cacheReady, const std::string &category,
+                                               const std::string &url, uint32_t maxBytes,
+                                               int64_t nowUtc,
+                                               const std::string &emptyMessage) {
+    if (cacheReady) {
+        return fetchDashboardTextCached(http, cache, category, url, maxBytes, nowUtc,
+                                        emptyMessage);
+    }
+    const SecureHttpResponse response = fetchDashboardText(http, url, maxBytes);
+    RuntimeSourcePayload result;
+    result.status.sourceId = category;
+    result.status.state = response.state;
+    result.status.lastAttemptUtc = nowUtc;
+    result.payload = response.payload;
+    result.empty = response.state != SourceState::Ok || response.payload.empty();
+    result.message = result.empty ? emptyMessage : "Live data";
+    return result;
 }
 
 FinancePageSnapshot syncFinancePageSnapshot(const AppConfig &cfg, int64_t nowUtc,
@@ -582,6 +792,10 @@ FinancePageSnapshot syncFinancePageSnapshot(const AppConfig &cfg, int64_t nowUtc
     const auto certStart = _binary_src_assets_certs_mozilla_crt_bundle_bin_start;
     const auto certEnd = _binary_src_assets_certs_mozilla_crt_bundle_bin_end;
     SecureHttpClient http(certStart, static_cast<size_t>(certEnd - certStart));
+    LittleFsCacheBackend cacheBackend;
+    CacheStore cache(cacheBackend, "/cache");
+    const bool cacheReady = ensureRuntimeCacheFsMounted();
+    bool usedStaleEconomic = false;
 
     const std::array<std::string, 2> stockUrls = {
         buildStooqCsvUrl(cfg.stockSymbols.c_str()),
@@ -591,17 +805,22 @@ FinancePageSnapshot syncFinancePageSnapshot(const AppConfig &cfg, int64_t nowUtc
         if (stockUrl.empty() || !snapshot.quotes.empty()) {
             continue;
         }
-        const SecureHttpResponse response = fetchDashboardText(http, stockUrl, 64U * 1024U);
-        if (response.state == SourceState::Ok && !response.payload.empty()) {
-            const FinanceQuoteSet parsed = parseStooqCsvQuotes(payloadToString(response), "Stooq", nowUtc);
+        const RuntimeSourcePayload payload = fetchDashboardTextRuntime(
+            http, cache, cacheReady, "finance/stooq", stockUrl, 64U * 1024U, nowUtc,
+            "Add Stooq symbols such as AAPL.US");
+        if (!payload.empty && !payload.payload.empty()) {
+            const FinanceQuoteSet parsed = parseStooqCsvQuotes(
+                std::string(payload.payload.begin(), payload.payload.end()), "Stooq", nowUtc);
             snapshot.quotes = parsed.quotes;
-            log_i(TAG, "Stooq quotes: items=%u rejected=%u partial=%d",
+            if (payload.fromCache) {
+                snapshot.updatedText = "STALE " + snapshot.updatedText;
+            }
+            log_i(TAG, "Stooq quotes %s: items=%u rejected=%u partial=%d",
+                  payload.fromCache ? "STALE" : "OK",
                   static_cast<unsigned>(snapshot.quotes.size()),
                   static_cast<unsigned>(parsed.rejectedRows), parsed.partialFailure ? 1 : 0);
         } else {
-            log_w(TAG, "Stooq fetch failed: state=%u status=%d bytes=%u",
-                  static_cast<unsigned>(response.state), response.statusCode,
-                  static_cast<unsigned>(response.bytesRead));
+            log_w(TAG, "Stooq unavailable: %s", payload.message.c_str());
         }
     }
 
@@ -615,22 +834,25 @@ FinancePageSnapshot syncFinancePageSnapshot(const AppConfig &cfg, int64_t nowUtc
             log_w(TAG, "Economic feed skipped because it is not a URL: %s", feed.c_str());
             continue;
         }
-        const SecureHttpResponse response = fetchDashboardText(
-            http, feed, std::min<uint32_t>(capacity.maxSourceBytes, 96U * 1024U));
-        if (response.state != SourceState::Ok || response.payload.empty()) {
-            log_w(TAG, "Economic feed failed: source=%s state=%u status=%d",
-                  hostLabelForUrl(feed, "ECON").c_str(), static_cast<unsigned>(response.state),
-                  response.statusCode);
+        const std::string source = hostLabelForUrl(feed, "ECON");
+        const RuntimeSourcePayload payload = fetchDashboardTextRuntime(
+            http, cache, cacheReady, std::string("economic/") + source, feed,
+            std::min<uint32_t>(capacity.maxSourceBytes, 96U * 1024U),
+            nowUtc, "Add a real economic RSS or ICS feed");
+        if (payload.empty || payload.payload.empty()) {
+            log_w(TAG, "Economic feed unavailable: source=%s message=%s",
+                  source.c_str(), payload.message.c_str());
             continue;
         }
-        const std::string body = payloadToString(response);
-        const std::string source = hostLabelForUrl(feed, "ECON");
+        const std::string body(payload.payload.begin(), payload.payload.end());
+        usedStaleEconomic = usedStaleEconomic || payload.fromCache;
         EconomicEventSet parsed = body.find("BEGIN:VCALENDAR") != std::string::npos
             ? parseEconomicIcsFeed(body, source, 8)
             : parseEconomicRssFeed(body, source, 8);
         snapshot.events.insert(snapshot.events.end(), parsed.events.begin(), parsed.events.end());
-        log_i(TAG, "Economic feed OK: source=%s events=%u rejected=%u",
-              source.c_str(), static_cast<unsigned>(parsed.events.size()),
+        log_i(TAG, "Economic feed %s: source=%s events=%u rejected=%u",
+              payload.fromCache ? "STALE" : "OK", source.c_str(),
+              static_cast<unsigned>(parsed.events.size()),
               static_cast<unsigned>(parsed.rejectedItems));
         if (snapshot.events.size() >= 8) {
             break;
@@ -643,6 +865,9 @@ FinancePageSnapshot syncFinancePageSnapshot(const AppConfig &cfg, int64_t nowUtc
     if (snapshot.events.size() > 8) {
         snapshot.events.resize(8);
     }
+    if (usedStaleEconomic && snapshot.updatedText.rfind("STALE ", 0) != 0) {
+        snapshot.updatedText = "STALE " + snapshot.updatedText;
+    }
     return snapshot;
 }
 
@@ -650,26 +875,35 @@ NewsPageSnapshot syncNewsPageSnapshot(const AppConfig &cfg, const CapacityProfil
     NewsPageSnapshot snapshot;
     snapshot.title = "HEADLINES";
     snapshot.subtitle = "RSS";
-    snapshot.history = sampleNewsPageSnapshot().history;
+    snapshot.history = {
+        {"--", "Today in History", "Configure a history RSS source to replace this empty state.", true},
+    };
 
     const auto certStart = _binary_src_assets_certs_mozilla_crt_bundle_bin_start;
     const auto certEnd = _binary_src_assets_certs_mozilla_crt_bundle_bin_end;
     SecureHttpClient http(certStart, static_cast<size_t>(certEnd - certStart));
+    LittleFsCacheBackend cacheBackend;
+    CacheStore cache(cacheBackend, "/cache");
+    const bool cacheReady = ensureRuntimeCacheFsMounted();
+    bool usedStaleNews = false;
 
     for (const std::string &feed : splitDashboardSourceList(cfg.newsFeeds)) {
         if (!isHttpsOrWebcalUrl(feed)) {
             continue;
         }
-        const SecureHttpResponse response = fetchDashboardText(
-            http, feed, std::min<uint32_t>(capacity.maxSourceBytes, 96U * 1024U));
         const std::string fallbackSource = hostLabelForUrl(feed, "RSS");
-        if (response.state != SourceState::Ok || response.payload.empty()) {
-            log_w(TAG, "News feed failed: source=%s state=%u status=%d",
-                  fallbackSource.c_str(), static_cast<unsigned>(response.state),
-                  response.statusCode);
+        const RuntimeSourcePayload payload = fetchDashboardTextRuntime(
+            http, cache, cacheReady, std::string("news/") + fallbackSource, feed,
+            std::min<uint32_t>(capacity.maxSourceBytes, 96U * 1024U),
+            static_cast<int64_t>(time(nullptr)), "Add at least one RSS or Atom feed");
+        if (payload.empty || payload.payload.empty()) {
+            log_w(TAG, "News feed unavailable: source=%s message=%s",
+                  fallbackSource.c_str(), payload.message.c_str());
             continue;
         }
-        const RssAtomFeed parsed = parseRssAtomTitles(payloadToString(response), 8, 150);
+        usedStaleNews = usedStaleNews || payload.fromCache;
+        const RssAtomFeed parsed = parseRssAtomTitles(
+            std::string(payload.payload.begin(), payload.payload.end()), 8, 150);
         for (const RssAtomItem &item : parsed.items) {
             NewsItemCell cell;
             cell.title = item.title;
@@ -681,12 +915,26 @@ NewsPageSnapshot syncNewsPageSnapshot(const AppConfig &cfg, const CapacityProfil
                 break;
             }
         }
-        log_i(TAG, "News feed OK: source=%s items=%u total=%u",
-              fallbackSource.c_str(), static_cast<unsigned>(parsed.items.size()),
+        log_i(TAG, "News feed %s: source=%s items=%u total=%u",
+              payload.fromCache ? "STALE" : "OK", fallbackSource.c_str(),
+              static_cast<unsigned>(parsed.items.size()),
               static_cast<unsigned>(snapshot.headlines.size()));
         if (snapshot.headlines.size() >= 6) {
             break;
         }
+    }
+    if (snapshot.headlines.empty()) {
+        snapshot.headlines.push_back({"No headlines available", "RSS",
+                                      "Check Data Sources > News or cached feed state.", true});
+    }
+    if (usedStaleNews) {
+        snapshot.subtitle = "STALE RSS";
+        snapshot.history = {
+            {"STALE", "Cached feed", "Latest RSS fetch failed; showing cached headlines.", true},
+        };
+    } else if (snapshot.headlines.size() == 1 &&
+               snapshot.headlines.front().title == "No headlines available") {
+        snapshot.subtitle = "RSS SETUP";
     }
 
     return snapshot;
@@ -752,20 +1000,14 @@ ButtonAction pollFocusUserHold(DisplayPageState page, bool userPressed,
     return action;
 }
 
-ButtonAction focusActionFromWakeButton(uint8_t userPin) {
-    constexpr uint32_t kFocusStopHoldMs = 2000UL;
-    if (userPin == 0xFF) {
-        return ButtonAction::None;
-    }
-    if (!isPressedPin(userPin)) {
-        return ButtonAction::None;
+void waitForButtonRelease(uint8_t pin, uint32_t maxMs) {
+    if (pin == 0xFF) {
+        return;
     }
     const uint32_t startMs = millis();
-    while (isPressedPin(userPin) && millis() - startMs < kFocusStopHoldMs) {
+    while (isPressedPin(pin) && millis() - startMs < maxMs) {
         delay(20);
     }
-    const uint32_t heldMs = millis() - startMs;
-    return focusClockActionFromLightWake(LightWake::UserButton, heldMs);
 }
 
 }  // namespace
@@ -837,15 +1079,16 @@ void DashboardApp::_enterApMode(IBoard &board) {
     char apSsid[32];
     snprintf(apSsid, sizeof(apSsid), "esp_dashboard_%02x%02x%02x",
              mac[3], mac[4], mac[5]);
+    const char *apPassword = "12345678";
 
     log_i(TAG, "Entering AP config mode: SSID=%s", apSsid);
     WifiManager apWifi;
-    apWifi.startAP(apSsid);
+    apWifi.startAP(apSsid, apPassword);
 
     // Draw AP info after softAP starts so we can show the real IP.
-    char apStatus[80];
-    snprintf(apStatus, sizeof(apStatus), "AP: %s\nOpen 192.168.4.1 to configure",
-             apSsid);
+    char apStatus[112];
+    snprintf(apStatus, sizeof(apStatus), "AP: %s\nKey: %s\nOpen 192.168.4.1",
+             apSsid, apPassword);
     (void)WiFi.softAPIP(); // IP is always 192.168.4.1 by default
     PageLoading apPage;
     apPage.create(board.gfx(), board.dispWidth(), board.dispHeight(),
@@ -856,9 +1099,16 @@ void DashboardApp::_enterApMode(IBoard &board) {
 
     WebServer apWebServer;
     apWebServer.start();
+    DNSServer dnsServer;
+    const bool dnsStarted = dnsServer.start(53, "*", WiFi.softAPIP());
+    log_i(TAG, "AP captive DNS: started=%d ip=%s",
+          dnsStarted ? 1 : 0, WiFi.softAPIP().toString().c_str());
 
     unsigned long start = millis();
-    while (millis() - start < kApTimeoutMs) { delay(200); }
+    while (millis() - start < kApTimeoutMs) {
+        dnsServer.processNextRequest();
+        delay(20);
+    }
 
     log_i(TAG, "AP mode timeout — restarting");
     _apMode = false;
@@ -882,6 +1132,11 @@ void DashboardApp::_showLoadingPage(IBoard &board, const char *status) {
 // Phase 2b-ii — WiFi connect + SNTP sync
 // ═════════════════════════════════════════════════════════════════════════════
 bool DashboardApp::_connectAndSync(IBoard &board, WifiManager &wifi, const AppConfig &cfg) {
+    if (cfg.wifiSsid.length() == 0) {
+        log_w(TAG, "WiFi SSID is not configured");
+        _showErrorPage(board, "Setup Required", "Open AP setup and add WiFi.");
+        return false;
+    }
     log_i(TAG, "Connecting WiFi: %s", cfg.wifiSsid.c_str());
     if (!wifi.connect(cfg.wifiSsid, cfg.wifiPassword)) {
         log_e(TAG, "WiFi connection failed");
@@ -1082,6 +1337,68 @@ void DashboardApp::_renderDisplayPage(IBoard &board, PageManager &pageManager,
 // ═════════════════════════════════════════════════════════════════════════════
 // Utility — error page
 // ═════════════════════════════════════════════════════════════════════════════
+void DashboardApp::_ensurePageData(IBoard &board, DisplayPageState page,
+                                   WeatherClass &weather,
+                                   CalendarPageSnapshot &calendarSnapshot,
+                                   PageSyncRequirements &completedRequirements,
+                                   const AppConfig &cfg,
+                                   String &localIP,
+                                   const CapacityProfile &capacity,
+                                   bool networkAvailable) {
+    const PageSyncRequirements required =
+        syncRequirementsForDisplayPage(page.isHomeWeather(), page.managedPage());
+    const PageSyncRequirements missing =
+        missingSyncRequirements(required, completedRequirements);
+    const PageDescriptor *descriptor = page.isHomeWeather() ? nullptr : findPage(page.managedPage());
+    log_i(TAG,
+          "Page data check: page=%ld name=%s required[w=%d c=%d f=%d n=%d] completed[w=%d c=%d f=%d n=%d] missing[w=%d c=%d f=%d n=%d]",
+          static_cast<long>(storedValueForDisplayPage(page)),
+          page.isHomeWeather() ? "PageWeather400x300" : (descriptor ? descriptor->name : "Unknown"),
+          required.weather ? 1 : 0, required.calendar ? 1 : 0,
+          required.finance ? 1 : 0, required.news ? 1 : 0,
+          completedRequirements.weather ? 1 : 0,
+          completedRequirements.calendar ? 1 : 0,
+          completedRequirements.finance ? 1 : 0,
+          completedRequirements.news ? 1 : 0,
+          missing.weather ? 1 : 0, missing.calendar ? 1 : 0,
+          missing.finance ? 1 : 0, missing.news ? 1 : 0);
+    if (!hasSyncRequirements(missing)) {
+        return;
+    }
+
+    log_i(TAG,
+          "On-demand sync before render: page=%ld network=%d missing weather=%d calendar=%d finance=%d news=%d",
+          static_cast<long>(storedValueForDisplayPage(page)),
+          networkAvailable ? 1 : 0,
+          missing.weather ? 1 : 0, missing.calendar ? 1 : 0,
+          missing.finance ? 1 : 0, missing.news ? 1 : 0);
+    if (!networkAvailable) {
+        log_w(TAG, "On-demand sync skipped because network is unavailable");
+        return;
+    }
+
+    PageSyncRequirements finished;
+    const int64_t nowUtc = static_cast<int64_t>(time(nullptr));
+    if (missing.weather && _fetchData(board, weather, cfg, localIP, true)) {
+        finished.weather = true;
+    }
+    if (missing.calendar) {
+        calendarSnapshot = syncCalendarPageSnapshot(cfg, nowUtc, capacity);
+        finished.calendar = true;
+    }
+#if defined(UI_LAYOUT_EPD_400x300)
+    if (missing.finance) {
+        gFinanceSnapshot = syncFinancePageSnapshot(cfg, nowUtc, capacity);
+        finished.finance = true;
+    }
+    if (missing.news) {
+        gNewsSnapshot = syncNewsPageSnapshot(cfg, capacity);
+        finished.news = true;
+    }
+#endif
+    markSyncRequirementsCompleted(completedRequirements, finished);
+}
+
 DisplayPageState DashboardApp::_runFocusClockSession(IBoard &board, PageManager &pageManager,
                                                      DisplayPageState currentPage,
                                                      WeatherClass &weather,
@@ -1098,12 +1415,21 @@ DisplayPageState DashboardApp::_runFocusClockSession(IBoard &board, PageManager 
         return currentPage;
     }
 
+    const bool storedFocusPage = savePersistedDisplayPage(currentPage);
+    log_i(TAG, "Focus Clock active page persisted: page=%ld stored=%d",
+          static_cast<long>(storedValueForDisplayPage(currentPage)),
+          storedFocusPage ? 1 : 0);
+
     configureButtonInput(board.bootButtonPin());
     configureButtonInput(board.apButtonPin());
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
-    log_i(TAG, "Focus Clock active: WiFi off, entering minute light-sleep refresh loop");
+    log_i(TAG, "Focus Clock active: WiFi off, entering timer-only light-sleep loop");
 
+    FocusHoldState focusHold;
+    int64_t nextRefreshUtc =
+        focusClockNextRefreshUtc(focusConfig, _focusClockState,
+                                 static_cast<int64_t>(time(nullptr)));
     while (isFocusDisplayPage(currentPage)) {
         const int64_t nowUtc = static_cast<int64_t>(time(nullptr));
         if (!focusClockSessionIsActive(focusConfig, _focusClockState, nowUtc)) {
@@ -1119,34 +1445,50 @@ DisplayPageState DashboardApp::_runFocusClockSession(IBoard &board, PageManager 
             break;
         }
 
-        const uint32_t refreshMs = focusClockNextRefreshMs(focusConfig, _focusClockState, nowUtc);
-        if (refreshMs == 0) {
+        if (nextRefreshUtc <= 0) {
             continue;
         }
 
-        const LightWake wake = board.lightSleepMs(refreshMs);
+        const int64_t secondsUntilRefresh = nextRefreshUtc - nowUtc;
+        const uint32_t sleepMs = secondsUntilRefresh > 0
+            ? std::min<uint32_t>(static_cast<uint32_t>(secondsUntilRefresh * 1000LL),
+                                 kFocusButtonPollSleepMs)
+            : 1UL;
+        const LightWake wake = board.timerOnlyLightSleepMs(sleepMs);
         const int64_t wakeUtc = static_cast<int64_t>(time(nullptr));
-        log_i(TAG, "Focus Clock light wake: wake=%d refreshMs=%lu",
-              static_cast<int>(wake), static_cast<unsigned long>(refreshMs));
-
-        if (wake == LightWake::UserButton) {
-            const ButtonAction action = focusActionFromWakeButton(board.apButtonPin());
-            if (action == ButtonAction::SyncCurrent &&
-                applyFocusClockButtonAction(currentPage.managedPage(), action, focusConfig,
-                                            _focusClockState, wakeUtc)) {
-                _lastButtonAction = action;
-                const uint32_t batteryMv = board.readBatteryMv();
-                const auto chrome = buildChromeContext(cfg, wakeUtc, localIP, batteryMv);
-                _renderDisplayPage(board, pageManager, currentPage, wakeUtc, weather,
-                                   calendarSnapshot, cfg, localIP, chrome);
-                const uint32_t contentHash = displayContentHash(currentPage, weather, cfg, localIP,
-                                                                wakeUtc, batteryMv);
-                gDashboardRtcPageState = snapshotDisplayRtcState(pageManager, currentPage,
-                                                                 wakeUtc, contentHash);
-                log_i(TAG, "Focus Clock stopped by USER long press");
-                break;
-            }
+        const uint32_t wakeMs = millis();
+        const bool userPressed = isPressedPin(board.apButtonPin());
+        const ButtonAction focusAction = pollFocusUserHold(currentPage, userPressed,
+                                                           wakeMs, focusHold);
+        if (focusAction == ButtonAction::SyncCurrent &&
+            applyFocusClockButtonAction(currentPage.managedPage(), focusAction, focusConfig,
+                                        _focusClockState, wakeUtc)) {
+            _lastButtonAction = focusAction;
+            const uint32_t batteryMv = board.readBatteryMv();
+            const auto chrome = buildChromeContext(cfg, wakeUtc, localIP, batteryMv);
+            _renderDisplayPage(board, pageManager, currentPage, wakeUtc, weather,
+                               calendarSnapshot, cfg, localIP, chrome);
+            const uint32_t contentHash = displayContentHash(currentPage, weather, cfg, localIP,
+                                                            wakeUtc, batteryMv);
+            gDashboardRtcPageState = snapshotDisplayRtcState(pageManager, currentPage,
+                                                             wakeUtc, contentHash);
+            log_i(TAG, "Focus Clock stopped by USER timer-polled long press");
+            waitForButtonRelease(board.apButtonPin(), 3000UL);
+            break;
         }
+
+        if (isPressedPin(board.bootButtonPin())) {
+            waitForButtonRelease(board.bootButtonPin(), 3000UL);
+            log_i(TAG, "Focus Clock active: suppressed BOOT press");
+            continue;
+        }
+
+        if (wakeUtc < nextRefreshUtc) {
+            continue;
+        }
+
+        log_i(TAG, "Focus Clock refresh wake: wake=%d nextRefreshUtc=%lld",
+              static_cast<int>(wake), static_cast<long long>(nextRefreshUtc));
 
         const uint32_t batteryMv = board.readBatteryMv();
         const auto chrome = buildChromeContext(cfg, wakeUtc, localIP, batteryMv);
@@ -1156,6 +1498,7 @@ DisplayPageState DashboardApp::_runFocusClockSession(IBoard &board, PageManager 
                                                         wakeUtc, batteryMv);
         gDashboardRtcPageState = snapshotDisplayRtcState(pageManager, currentPage,
                                                          wakeUtc, contentHash);
+        nextRefreshUtc = focusClockNextRefreshUtc(focusConfig, _focusClockState, wakeUtc);
     }
 
     return currentPage;
@@ -1173,9 +1516,12 @@ void DashboardApp::_showErrorPage(IBoard &board, const char *title, const char *
 DisplayPageState DashboardApp::_runInteractiveWindow(IBoard &board, PageManager &pageManager,
                                                      DisplayPageState currentPage,
                                                      WeatherClass &weather,
-                                                     const CalendarPageSnapshot &calendarSnapshot,
+                                                     CalendarPageSnapshot &calendarSnapshot,
+                                                     PageSyncRequirements &completedRequirements,
                                                      const AppConfig &cfg,
-                                                     const String &localIP) {
+                                                     String &localIP,
+                                                     const CapacityProfile &capacity,
+                                                     bool networkAvailable) {
     const uint8_t bootPin = board.bootButtonPin();
     const uint8_t userPin = board.apButtonPin();
     configureButtonInput(bootPin);
@@ -1209,7 +1555,12 @@ DisplayPageState DashboardApp::_runInteractiveWindow(IBoard &board, PageManager 
             action = buttons.update(ButtonId::Boot, isPressedPin(bootPin), nowMs);
         }
         if (action == ButtonAction::None) {
-            if (userPin != 0xFF && !isFocusDisplayPage(currentPage)) {
+            const FocusClockConfig pollFocusConfig = focusClockConfigFromAppConfig(cfg);
+            const bool focusActiveForPolling =
+                isFocusDisplayPage(currentPage) &&
+                focusClockSessionIsActive(pollFocusConfig, _focusClockState,
+                                          static_cast<int64_t>(time(nullptr)));
+            if (userPin != 0xFF && !focusActiveForPolling) {
                 action = buttons.update(ButtonId::User, userPressed, nowMs);
             }
         }
@@ -1261,6 +1612,9 @@ DisplayPageState DashboardApp::_runInteractiveWindow(IBoard &board, PageManager 
         const DisplayPageState selectedPage = applyButtonDisplayPageAction(pageManager, currentPage, action);
         if (action == ButtonAction::NextPage || action == ButtonAction::PreviousPage) {
             currentPage = selectedPage;
+            _ensurePageData(board, selectedPage, weather, calendarSnapshot,
+                            completedRequirements, cfg, localIP, capacity,
+                            networkAvailable);
             const int64_t nowUtc = static_cast<int64_t>(time(nullptr));
             const uint32_t batteryMv = board.readBatteryMv();
             const auto chrome = buildChromeContext(cfg, nowUtc, localIP, batteryMv);
@@ -1287,9 +1641,11 @@ DisplayPageState DashboardApp::_runInteractiveWindow(IBoard &board, PageManager 
 DisplayPageState DashboardApp::_runConfigWindow(IBoard &board, PageManager &pageManager,
                                                 DisplayPageState currentPage,
                                                 WeatherClass &weather,
-                                                const CalendarPageSnapshot &calendarSnapshot,
+                                                CalendarPageSnapshot &calendarSnapshot,
+                                                PageSyncRequirements &completedRequirements,
                                                 const AppConfig &cfg,
-                                                const String &localIP) {
+                                                String &localIP,
+                                                const CapacityProfile &capacity) {
     const uint8_t bootPin = board.bootButtonPin();
     const uint8_t userPin = board.apButtonPin();
     configureButtonInput(bootPin);
@@ -1323,9 +1679,15 @@ DisplayPageState DashboardApp::_runConfigWindow(IBoard &board, PageManager &page
         if (action == ButtonAction::None && bootPin != 0xFF) {
             action = buttons.update(ButtonId::Boot, isPressedPin(bootPin), nowMs);
         }
-        if (action == ButtonAction::None && userPin != 0xFF &&
-            !isFocusDisplayPage(currentPage)) {
-            action = buttons.update(ButtonId::User, userPressed, nowMs);
+        if (action == ButtonAction::None && userPin != 0xFF) {
+            const FocusClockConfig pollFocusConfig = focusClockConfigFromAppConfig(cfg);
+            const bool focusActiveForPolling =
+                isFocusDisplayPage(currentPage) &&
+                focusClockSessionIsActive(pollFocusConfig, _focusClockState,
+                                          static_cast<int64_t>(time(nullptr)));
+            if (!focusActiveForPolling) {
+                action = buttons.update(ButtonId::User, userPressed, nowMs);
+            }
         }
         if (action == ButtonAction::None) {
             delay(20);
@@ -1362,7 +1724,8 @@ DisplayPageState DashboardApp::_runConfigWindow(IBoard &board, PageManager &page
                 currentPage = _runFocusClockSession(board, pageManager, currentPage, weather,
                                                     calendarSnapshot, cfg, localIP);
                 return _runInteractiveWindow(board, pageManager, currentPage, weather,
-                                             calendarSnapshot, cfg, localIP);
+                                             calendarSnapshot, completedRequirements,
+                                             cfg, localIP, capacity, false);
             }
             delay(20);
             continue;
@@ -1380,6 +1743,8 @@ DisplayPageState DashboardApp::_runConfigWindow(IBoard &board, PageManager &page
         const DisplayPageState selectedPage = applyButtonDisplayPageAction(pageManager, currentPage, action);
         if (action == ButtonAction::NextPage || action == ButtonAction::PreviousPage) {
             currentPage = selectedPage;
+            _ensurePageData(board, selectedPage, weather, calendarSnapshot,
+                            completedRequirements, cfg, localIP, capacity, true);
             const int64_t nowUtc = static_cast<int64_t>(time(nullptr));
             const uint32_t batteryMv = board.readBatteryMv();
             const auto chrome = buildChromeContext(cfg, nowUtc, localIP, batteryMv);
@@ -1448,16 +1813,23 @@ void DashboardApp::run() {
     const PageSettings settings = pageSettingsFromConfig(cfg);
     PageManager pageManager(settings);
     const DisplayPageState persistedPage = loadPersistedDisplayPage(settings);
-    DisplayPageState displayPage = selectStartupDisplayPage(persistedPage, settings, _restorePersistedPage);
+    const bool forceFocusRestore =
+        _focusClockState.active && isFocusDisplayPage(persistedPage);
+    DisplayPageState displayPage = selectStartupDisplayPage(persistedPage, settings,
+                                                            _restorePersistedPage,
+                                                            forceFocusRestore);
     if (!displayPage.isHomeWeather()) {
         displayPage = DisplayPageState::managed(pageManager.restoreStoredPage(displayPage.managedPage()));
     } else {
         pageManager.restoreStoredPage(pageManager.firstPage());
     }
-    log_i(TAG, "Startup page: %ld persisted=%ld restore=%d",
+    const bool focusActiveStartup =
+        _focusClockState.active && isFocusDisplayPage(displayPage);
+    log_i(TAG, "Startup page: %ld persisted=%ld restore=%d focusRestore=%d",
           static_cast<long>(storedValueForDisplayPage(displayPage)),
           static_cast<long>(storedValueForDisplayPage(persistedPage)),
-          _restorePersistedPage ? 1 : 0);
+          _restorePersistedPage ? 1 : 0,
+          forceFocusRestore ? 1 : 0);
     const PageSyncRequirements syncReq =
         syncRequirementsForDisplayPage(displayPage.isHomeWeather(), displayPage.managedPage());
     log_i(TAG, "Sync requirements: weather=%d calendar=%d finance=%d news=%d",
@@ -1468,7 +1840,7 @@ void DashboardApp::run() {
 
     if (_apMode)   { _enterApMode(board); /* never returns */ }
     const bool forceInitialRender = _coldBoot;
-    if (_coldBoot) {
+    if (_coldBoot && !focusActiveStartup) {
         char splashBuf[64];
         snprintf(splashBuf, sizeof(splashBuf), "Connecting to\n%s...",
                  cfg.wifiSsid.c_str());
@@ -1476,16 +1848,21 @@ void DashboardApp::run() {
     }
     _coldBoot = false;
 
-    WifiManager wifi;
-    if (!_connectAndSync(board, wifi, cfg)) {
-        log_w(TAG, "WiFi failed — entering AP mode for recovery");
-        _enterApMode(board); // never returns; restarts after kApTimeoutMs
-        return;
-    }
-
     WeatherClass weather;
     String localIP;
-    bool dataOk = _fetchData(board, weather, cfg, localIP, syncReq.weather);
+    WifiManager wifi;
+    bool dataOk = true;
+    if (focusActiveStartup) {
+        log_i(TAG, "Focus Clock active startup: skipping WiFi connect and data sync");
+    } else {
+        if (!_connectAndSync(board, wifi, cfg)) {
+        log_w(TAG, "WiFi failed — entering AP mode for recovery");
+            _enterApMode(board); // never returns after kApTimeoutMs
+            return;
+        }
+
+        dataOk = _fetchData(board, weather, cfg, localIP, syncReq.weather);
+    }
 
     if (!dataOk) {
         wifi.disconnect();
@@ -1503,9 +1880,11 @@ void DashboardApp::run() {
     const int64_t nowUtc = static_cast<int64_t>(time(nullptr));
     const uint32_t batteryMv = board.readBatteryMv();
     const auto chrome = buildChromeContext(cfg, nowUtc, localIP, batteryMv);
-    const CalendarPageSnapshot calendarSnapshot = syncReq.calendar
+    CalendarPageSnapshot calendarSnapshot = syncReq.calendar
         ? syncCalendarPageSnapshot(cfg, nowUtc, capacity)
-        : sampleCalendarPageSnapshot();
+        : calendarEmptyStateSnapshot(CalendarEmptyStateKind::SetupRequired, nowUtc,
+                                     cfg.timeZoneId.c_str(),
+                                     isTwentyFourHourFormat(cfg.timeFormat));
 #if defined(UI_LAYOUT_EPD_400x300)
     gFinanceSnapshot = syncReq.finance
         ? syncFinancePageSnapshot(cfg, nowUtc, capacity)
@@ -1514,6 +1893,10 @@ void DashboardApp::run() {
         ? syncNewsPageSnapshot(cfg, capacity)
         : sampleNewsPageSnapshot();
 #endif
+    PageSyncRequirements completedRequirements;
+    if (!focusActiveStartup) {
+        markSyncRequirementsCompleted(completedRequirements, syncReq);
+    }
     const uint32_t contentHash = displayContentHash(displayPage, weather, cfg, localIP,
                                                     nowUtc, batteryMv);
     RenderInputs renderInput;
@@ -1548,19 +1931,22 @@ void DashboardApp::run() {
         finalPage = _runFocusClockSession(board, pageManager, displayPage, weather,
                                           calendarSnapshot, cfg, localIP);
         finalPage = _runInteractiveWindow(board, pageManager, finalPage, weather,
-                                          calendarSnapshot, cfg, localIP);
+                                          calendarSnapshot, completedRequirements,
+                                          cfg, localIP, capacity, false);
     } else if (cfg.portalWindowSec > 0) {
         // Online profile: keep WiFi associated (modem sleep) and serve the
         // web portal for the configured window; buttons stay active too.
         WiFi.setSleep(true);
-        finalPage = _runConfigWindow(board, pageManager, displayPage, weather, calendarSnapshot,
-                                     cfg, localIP);
+        finalPage = _runConfigWindow(board, pageManager, displayPage, weather,
+                                     calendarSnapshot, completedRequirements,
+                                     cfg, localIP, capacity);
     } else {
         // Offline profile: radios off, awake button window until idle.
         wifi.disconnect();
         log_i(TAG, "WiFi disconnected");
         finalPage = _runInteractiveWindow(board, pageManager, displayPage, weather,
-                                          calendarSnapshot, cfg, localIP);
+                                          calendarSnapshot, completedRequirements,
+                                          cfg, localIP, capacity, false);
     }
     log_i(TAG, "Sleeping for %d minutes", cfg.sleepDuration);
     _enterScheduledSleep(board,

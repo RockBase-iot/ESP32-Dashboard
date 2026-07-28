@@ -25,6 +25,10 @@ DisplayPageState sanitizeStoredDisplayPage(int32_t rawPageId, const PageSettings
 DisplayPageState selectStartupDisplayPage(DisplayPageState persistedPage,
                                           const PageSettings &settings,
                                           bool restorePersistedPage);
+DisplayPageState selectStartupDisplayPage(DisplayPageState persistedPage,
+                                          const PageSettings &settings,
+                                          bool restorePersistedPage,
+                                          bool forcePersistedPage);
 DisplayPageState loadPersistedDisplayPage(const PageSettings &settings);
 bool savePersistedDisplayPage(DisplayPageState page);
 int32_t storedValueForDisplayPage(DisplayPageState page);

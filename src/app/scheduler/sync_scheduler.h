@@ -32,3 +32,8 @@ public:
 };
 
 PageSyncRequirements syncRequirementsForDisplayPage(bool homeWeather, PageId page);
+PageSyncRequirements missingSyncRequirements(const PageSyncRequirements &required,
+                                             const PageSyncRequirements &completed);
+void markSyncRequirementsCompleted(PageSyncRequirements &completed,
+                                   const PageSyncRequirements &finished);
+bool hasSyncRequirements(const PageSyncRequirements &requirements);

@@ -98,6 +98,10 @@ public:
                                  /*bootPressedNow=*/false, /*userPressedNow=*/false);
     }
 
+    LightWake timerOnlyLightSleepMs(uint32_t maxMs) override {
+        return lightSleepMs(maxMs);
+    }
+
     uint8_t bootButtonPin() const override { return 0xFF; } // not present
     uint8_t apButtonPin()   const override { return 0xFF; } // not present
 

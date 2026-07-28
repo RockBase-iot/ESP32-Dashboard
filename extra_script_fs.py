@@ -16,6 +16,9 @@ import sys
 
 Import("env")
 
+sys.path.insert(0, env.subst("$PROJECT_DIR"))
+from scripts.release_image import create_release_image
+
 
 def _log(message):
     print(message)
@@ -93,3 +96,54 @@ def upload_all_action(target, source, env):
 
 upload_all = env.Alias("upload_all", [], env.Action(upload_all_action, "[EPD/FS] Upload firmware + LittleFS"))
 AlwaysBuild(upload_all)
+
+
+def release_bin_action(target, source, env):
+    project_dir = env.subst("$PROJECT_DIR")
+    build_dir = env.subst("$BUILD_DIR")
+    pioenv = env.subst("$PIOENV")
+    platform = env.PioPlatform()
+    framework_dir = platform.get_package_dir("framework-arduinoespressif32")
+    esptool_dir = platform.get_package_dir("tool-esptoolpy")
+    partition_csv = env.subst("$BOARD_FCPATH")
+    if not partition_csv or not os.path.isfile(partition_csv):
+        partition_csv = os.path.join(project_dir, "partition", "partitions_16mb_ota.csv")
+
+    def env_value(name, default):
+        value = env.subst(name)
+        if not value or value == name or value.startswith("$"):
+            return default
+        return value
+
+    def flash_freq_value():
+        value = env_value("$BOARD_F_FLASH", "80m")
+        normalized = value.strip().lower().rstrip("l")
+        if normalized in ("80000000", "80"):
+            return "80m"
+        if normalized in ("40000000", "40"):
+            return "40m"
+        return value
+
+    output_path = create_release_image(
+        project_dir=project_dir,
+        pioenv=pioenv,
+        build_dir=build_dir,
+        partition_csv=partition_csv,
+        framework_dir=framework_dir,
+        tool_esptoolpy_dir=esptool_dir,
+        flash_mode=env_value("$BOARD_FLASH_MODE", "dio"),
+        flash_freq=flash_freq_value(),
+        flash_size=env_value("$BOARD_UPLOAD_FLASH_SIZE", "16MB"),
+        chip=env_value("$BOARD_MCU", "esp32s3"),
+        python_exe=sys.executable,
+    )
+    _log(f"[EPD/Release] Created 0x0 flash image: {output_path}")
+    return 0
+
+
+release_bin = env.Alias(
+    "release_bin",
+    ["$BUILD_DIR/${PROGNAME}.bin", "$BUILD_DIR/littlefs.bin"],
+    env.Action(release_bin_action, "[EPD/Release] Merge firmware + LittleFS release image"),
+)
+AlwaysBuild(release_bin)

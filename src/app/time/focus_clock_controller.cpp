@@ -43,6 +43,18 @@ bool focusClockBlocksButtonAction(PageId page,
            action == ButtonAction::RecoveryAp;
 }
 
+bool focusClockSuppressesLightWake(PageId page,
+                                   LightWake wake,
+                                   const FocusClockConfig &config,
+                                   const FocusClockRuntimeState &state,
+                                   int64_t nowUtc) {
+    if (page != PageId::FocusClock ||
+        !focusClockSessionIsActive(config, state, nowUtc)) {
+        return false;
+    }
+    return wake == LightWake::BootButton || wake == LightWake::UserButton;
+}
+
 uint32_t focusClockNextRefreshMs(const FocusClockConfig &config,
                                  const FocusClockRuntimeState &state,
                                  int64_t nowUtc) {
@@ -55,6 +67,16 @@ uint32_t focusClockNextRefreshMs(const FocusClockConfig &config,
     }
     const uint64_t remainingMs = static_cast<uint64_t>(remainingSec) * 1000ULL;
     return remainingMs < kFocusRefreshMs ? static_cast<uint32_t>(remainingMs) : kFocusRefreshMs;
+}
+
+int64_t focusClockNextRefreshUtc(const FocusClockConfig &config,
+                                 const FocusClockRuntimeState &state,
+                                 int64_t nowUtc) {
+    const uint32_t refreshMs = focusClockNextRefreshMs(config, state, nowUtc);
+    if (refreshMs == 0) {
+        return 0;
+    }
+    return nowUtc + static_cast<int64_t>((refreshMs + 999UL) / 1000UL);
 }
 
 ButtonAction focusClockActionFromLightWake(LightWake wake, uint32_t heldAfterWakeMs) {

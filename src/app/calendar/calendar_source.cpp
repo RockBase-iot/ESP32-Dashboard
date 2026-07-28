@@ -143,3 +143,24 @@ std::string maskCalendarUrlForDisplay(const std::string &normalizedUrl,
     }
     return std::string("https://") + host + "/..." + lastFour(normalizedUrl);
 }
+
+std::string calendarSourceDiagnosticLabel(const std::string &rawUrl) {
+    const auto normalized = normalizeCalendarSourceUrl(rawUrl);
+    if (!normalized.ok) {
+        return "(invalid calendar url)";
+    }
+    return maskCalendarUrlForDisplay(normalized.normalizedUrl, normalized.host);
+}
+
+uint32_t calendarSourceDiagnosticHash(const std::string &rawUrl) {
+    const auto normalized = normalizeCalendarSourceUrl(rawUrl);
+    if (!normalized.ok) {
+        return 0;
+    }
+    uint32_t hash = 2166136261UL;
+    for (const char c : normalized.normalizedUrl) {
+        hash ^= static_cast<uint8_t>(c);
+        hash *= 16777619UL;
+    }
+    return hash;
+}

@@ -106,6 +106,20 @@ bool parseRecurrenceRule(const std::string &text, RecurrenceRule &rule) {
                 else if (day == "FR") parsed.byWeekdays.push_back(5);
                 else if (day == "SA") parsed.byWeekdays.push_back(6);
             }
+        } else if (key == "BYMONTHDAY") {
+            for (const std::string &token : split(value, ',')) {
+                const int day = std::atoi(token.c_str());
+                if (day != 0 && day >= -31 && day <= 31) {
+                    parsed.byMonthDays.push_back(day);
+                }
+            }
+        } else if (key == "BYSETPOS") {
+            for (const std::string &token : split(value, ',')) {
+                const int pos = std::atoi(token.c_str());
+                if (pos != 0 && pos >= -366 && pos <= 366) {
+                    parsed.bySetPositions.push_back(pos);
+                }
+            }
         }
     }
     if (parsed.frequency == RecurrenceFrequency::Unknown) {

@@ -117,10 +117,21 @@ void WifiManager::disconnect() {
     log_i(TAG, "WiFi disconnected");
 }
 
-void WifiManager::startAP(const String &ssid) {
+void WifiManager::startAP(const String &ssid, const String &password) {
     WiFi.disconnect(/*wifioff=*/true); // ensure STA mode is off
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(ssid.c_str());        // open network, no password
-    log_i(TAG, "SoftAP started: SSID=%s  IP=%s",
-          ssid.c_str(), WiFi.softAPIP().toString().c_str());
+    WiFi.setSleep(false);
+
+    const IPAddress apIP(192, 168, 4, 1);
+    const IPAddress netmask(255, 255, 255, 0);
+    const bool ipOk = WiFi.softAPConfig(apIP, apIP, netmask);
+    if (password.length() >= 8) {
+        WiFi.softAP(ssid.c_str(), password.c_str());
+    } else {
+        WiFi.softAP(ssid.c_str());
+    }
+    log_i(TAG, "SoftAP started: SSID=%s security=%s configIP=%d IP=%s",
+          ssid.c_str(), password.length() >= 8 ? "WPA2" : "open",
+          ipOk ? 1 : 0,
+          WiFi.softAPIP().toString().c_str());
 }

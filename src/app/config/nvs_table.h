@@ -44,8 +44,8 @@
 
 // ─── Default values (used when NVS key is absent) ─────────────────────────
 // Open-Meteo is fully free and requires no API key.
-#define DEFAULT_WIFI_SSID        "NMTech-2.4G"
-#define DEFAULT_WIFI_PASSWORD    "NMMiner2048"
+#define DEFAULT_WIFI_SSID        ""
+#define DEFAULT_WIFI_PASSWORD    ""
 #define DEFAULT_LAT              "30.6667"
 #define DEFAULT_LON              "104.0667"
 #define DEFAULT_CITY             "Chengdu, Sichuan, China"

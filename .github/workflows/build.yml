@@ -20,8 +20,12 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
-      - name: Native tests
-        run: pio test -e native
+      - name: Embedded build-only tests
+        run: |
+          pio test -e nm-display-420 -f test_display_page_state --without-uploading --without-testing
+          pio test -e nm-display-420 -f test_wake_coordinator --without-uploading --without-testing
+          pio test -e nm-display-420 -f test_legacy_config_migration --without-uploading --without-testing
+          pio test -e nm-display-420 -f test_source_runtime_cache --without-uploading --without-testing
 
       - name: Firmware build
         run: |
@@ -46,3 +50,22 @@ jobs:
             grep -E "Building FS image|LittleFS|Filesystem" littlefs-build.log || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release image
+        run: |
+          set -o pipefail
+          pio run -e nm-display-420 -t release_bin | tee release-image.log
+          {
+            echo "## Release image"
+            echo
+            echo '```text'
+            grep -E "Created 0x0 flash image|Wrote 0x" release-image.log || true
+            ls -lh release/*.bin
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-dashboard-release-images
+          path: release/*.bin

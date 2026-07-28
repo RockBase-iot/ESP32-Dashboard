@@ -17,7 +17,15 @@ bool focusClockBlocksButtonAction(PageId page,
                                   const FocusClockConfig &config,
                                   const FocusClockRuntimeState &state,
                                   int64_t nowUtc);
+bool focusClockSuppressesLightWake(PageId page,
+                                   LightWake wake,
+                                   const FocusClockConfig &config,
+                                   const FocusClockRuntimeState &state,
+                                   int64_t nowUtc);
 uint32_t focusClockNextRefreshMs(const FocusClockConfig &config,
+                                 const FocusClockRuntimeState &state,
+                                 int64_t nowUtc);
+int64_t focusClockNextRefreshUtc(const FocusClockConfig &config,
                                  const FocusClockRuntimeState &state,
                                  int64_t nowUtc);
 ButtonAction focusClockActionFromLightWake(LightWake wake, uint32_t heldAfterWakeMs);

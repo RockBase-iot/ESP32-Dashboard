@@ -1,10 +1,49 @@
 #include "app_config.h"
 #include "settings.h"
 #include "nvs_table.h"
+#include "legacy_config_migration.h"
 #include "app/page/page_manager.h"
 #include "app/web/web_config_validation.h"
+#include "utils/logger.h"
 
 namespace {
+constexpr const char *TAG_CONFIG = "AppConfig";
+
+class SettingsLegacyConfigStore final : public ILegacyConfigStore {
+public:
+    explicit SettingsLegacyConfigStore(Settings &settings) : _settings(settings) {}
+
+    LegacyKeyEraseResult eraseKey(const char *key) override {
+        switch (_settings.EraseKey(key)) {
+            case SettingsEraseResult::Removed:
+                return LegacyKeyEraseResult::Removed;
+            case SettingsEraseResult::NotFound:
+                return LegacyKeyEraseResult::NotFound;
+            case SettingsEraseResult::Error:
+                return LegacyKeyEraseResult::Error;
+        }
+        return LegacyKeyEraseResult::Error;
+    }
+
+    bool commit() override {
+        return _settings.Commit();
+    }
+
+private:
+    Settings &_settings;
+};
+
+void runLegacyConfigMigrations() {
+    Settings settings(NVS_NAMESPACE_WEATHER, /*read_write=*/true);
+    SettingsLegacyConfigStore store(settings);
+    const LegacyConfigMigrationResult result = migrateLegacyAccessCredential(store);
+    if (result == LegacyConfigMigrationResult::Removed) {
+        log_i(TAG_CONFIG, "Removed legacy access credential");
+    } else if (result == LegacyConfigMigrationResult::Error) {
+        log_w(TAG_CONFIG, "Could not remove legacy access credential");
+    }
+}
+
 uint16_t clampFocusMinutes(int32_t minutes) {
     if (minutes < 1) {
         return 1;
@@ -111,6 +150,7 @@ bool parsePageOrder(const String &csv, AppConfig &cfg) {
 }  // namespace
 
 void loadAppConfig(AppConfig &cfg) {
+    runLegacyConfigMigrations();
     Settings s(NVS_NAMESPACE_WEATHER, /*read_write=*/false);
     const PageSettings pageDefaults = defaultPageSettings();
 

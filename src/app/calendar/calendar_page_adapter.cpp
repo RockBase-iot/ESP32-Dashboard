@@ -228,3 +228,33 @@ CalendarPageSnapshot calendarPageSnapshotFromEvents(const std::vector<CalendarEv
     }
     return snapshot;
 }
+
+CalendarPageSnapshot calendarEmptyStateSnapshot(CalendarEmptyStateKind kind,
+                                                int64_t nowUtc,
+                                                const std::string &timezoneId,
+                                                bool twentyFourHour) {
+    CalendarPageSnapshot snapshot =
+        calendarPageSnapshotFromEvents({}, nowUtc, timezoneId, twentyFourHour);
+    snapshot.title = "TODAY OVERVIEW";
+    snapshot.dateTitle = snapshot.dateTitle.empty() ? "CALENDAR" : snapshot.dateTitle;
+    if (kind == CalendarEmptyStateKind::SetupRequired) {
+        snapshot.subtitle = "Calendar setup";
+        snapshot.overviewItems = {{"--", "Add an ICS calendar URL",
+                                   "Data Sources > Calendar", true}};
+        snapshot.timelineItems = {{"--", "Calendar not configured",
+                                   "Add Google/Outlook/Apple ICS", true, 0}};
+        snapshot.agendaItems = {"Add at least one enabled ICS calendar source."};
+        snapshot.notes = {"No calendar cache yet."};
+        snapshot.milestones = {"Calendar data will appear after sync."};
+    } else {
+        snapshot.subtitle = "Calendar stale";
+        snapshot.overviewItems = {{"--", "Calendar sync failed",
+                                   "No usable cache yet", true}};
+        snapshot.timelineItems = {{"--", "No events available",
+                                   "Check WiFi or calendar URL", true, 0}};
+        snapshot.agendaItems = {"No live or cached calendar data available."};
+        snapshot.notes = {"Check Data Sources > Calendar."};
+        snapshot.milestones = {"The next successful sync will fill this page."};
+    }
+    return snapshot;
+}

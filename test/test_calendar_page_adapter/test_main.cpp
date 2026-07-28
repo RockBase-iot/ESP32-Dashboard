@@ -9,6 +9,7 @@
 #include "app/calendar/calendar_models.cpp"
 #include "app/calendar/ics_line_reader.cpp"
 #include "app/calendar/ics_parser.cpp"
+#include "app/time/timezone_catalog.cpp"
 #include "app/calendar/timezone_resolver.cpp"
 #include "app/calendar/calendar_page_adapter.cpp"
 
@@ -108,10 +109,32 @@ void test_google_ical_events_from_current_week_remain_visible_after_event_day() 
     TEST_ASSERT_EQUAL_STRING("No calendar events today", snapshot.agendaItems[0].c_str());
 }
 
+void test_calendar_empty_state_uses_current_week_after_week_rollover() {
+    TimezoneResolver resolver;
+    LocalDateTime local;
+    local.year = 2026;
+    local.month = 7;
+    local.day = 27;
+    local.hour = 9;
+    const int64_t nowUtc = resolver.toUtc("Asia/Shanghai", local);
+
+    const CalendarPageSnapshot snapshot = calendarEmptyStateSnapshot(
+        CalendarEmptyStateKind::SetupRequired, nowUtc, "Asia/Shanghai", true);
+
+    TEST_ASSERT_EQUAL_STRING("JUL 27-AUG 02 2026", snapshot.weekRangeLabel.c_str());
+    TEST_ASSERT_EQUAL_UINT32(7, snapshot.weekCells.size());
+    TEST_ASSERT_EQUAL_STRING("27", snapshot.weekCells[0].text.c_str());
+    TEST_ASSERT_EQUAL_STRING("MON", snapshot.weekCells[0].detail.c_str());
+    TEST_ASSERT_TRUE(snapshot.weekCells[0].today);
+    TEST_ASSERT_EQUAL_STRING("02", snapshot.weekCells[6].text.c_str());
+    TEST_ASSERT_EQUAL_STRING("SUN", snapshot.weekCells[6].detail.c_str());
+}
+
 void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_google_ical_event_reaches_calendar_page_snapshot);
     RUN_TEST(test_google_ical_events_from_current_week_remain_visible_after_event_day);
+    RUN_TEST(test_calendar_empty_state_uses_current_week_after_week_rollover);
     UNITY_END();
 }
 

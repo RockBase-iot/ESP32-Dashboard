@@ -6,6 +6,10 @@
 #include <nvs.h>
 #include <nvs_flash.h>
 
+#include "utils/logger.h"
+
+static const char *TAG_CAL_SECRETS = "CalendarSecrets";
+
 namespace {
 std::string indexedKey(const char *prefix, uint8_t index) {
     char buffer[12];
@@ -143,10 +147,16 @@ CalendarSecretStore::CalendarSecretStore(ISecretBackend &backend) : _backend(bac
 
 bool CalendarSecretStore::saveSource(const CalendarSourceSecrets &source) {
     if (!isValidCalendarSourceIndex(source.index)) {
+        log_w(TAG_CAL_SECRETS, "Save rejected: invalid calendar slot=%u",
+              static_cast<unsigned>(source.index));
         return false;
     }
     const auto normalized = normalizeCalendarSourceUrl(source.url);
     if (!normalized.ok) {
+        log_w(TAG_CAL_SECRETS, "Save rejected: slot=%u urlLen=%u policy=%u",
+              static_cast<unsigned>(source.index),
+              static_cast<unsigned>(source.url.size()),
+              static_cast<unsigned>(normalized.status));
         return false;
     }
     bool ok = true;
@@ -155,7 +165,17 @@ bool CalendarSecretStore::saveSource(const CalendarSourceSecrets &source) {
     ok = _backend.setString(calendarSourceAliasKey(source.index), source.alias) && ok;
     ok = _backend.setString(calendarSourceEnabledKey(source.index), source.enabled ? "1" : "0") && ok;
     ok = _backend.setString(calendarSourceColorKey(source.index), std::to_string(source.color)) && ok;
-    return _backend.commit() && ok;
+    const bool committed = _backend.commit();
+    log_i(TAG_CAL_SECRETS,
+          "Saved source slot=%u enabled=%d host=%s label=%s urlHash=0x%08lx urlLen=%u alias=%d apiKey=%d color=%u writes=%d commit=%d",
+          static_cast<unsigned>(source.index), source.enabled ? 1 : 0,
+          normalized.host.c_str(),
+          calendarSourceDiagnosticLabel(normalized.normalizedUrl).c_str(),
+          static_cast<unsigned long>(calendarSourceDiagnosticHash(normalized.normalizedUrl)),
+          static_cast<unsigned>(normalized.normalizedUrl.size()),
+          source.alias.empty() ? 0 : 1, source.apiKey.empty() ? 0 : 1,
+          static_cast<unsigned>(source.color), ok ? 1 : 0, committed ? 1 : 0);
+    return committed && ok;
 }
 
 CalendarSourceMetadata CalendarSecretStore::readMetadata(uint8_t index) const {
@@ -181,14 +201,21 @@ CalendarSourceMetadata CalendarSecretStore::readMetadata(uint8_t index) const {
 
 bool CalendarSecretStore::loadSourceForDownload(uint8_t index, CalendarSourceSecrets &out) const {
     if (!isValidCalendarSourceIndex(index)) {
+        log_w(TAG_CAL_SECRETS, "Load rejected: invalid calendar slot=%u",
+              static_cast<unsigned>(index));
         return false;
     }
     const std::string url = getOrEmpty(_backend, calendarSourceUrlKey(index));
     if (url.empty()) {
+        log_d(TAG_CAL_SECRETS, "Load skipped: slot=%u no stored URL",
+              static_cast<unsigned>(index));
         return false;
     }
     const auto normalized = normalizeCalendarSourceUrl(url);
     if (!normalized.ok) {
+        log_w(TAG_CAL_SECRETS, "Load rejected: slot=%u storedUrlLen=%u policy=%u",
+              static_cast<unsigned>(index), static_cast<unsigned>(url.size()),
+              static_cast<unsigned>(normalized.status));
         return false;
     }
     out.index = index;
@@ -197,6 +224,15 @@ bool CalendarSecretStore::loadSourceForDownload(uint8_t index, CalendarSourceSec
     out.alias = getOrEmpty(_backend, calendarSourceAliasKey(index));
     out.enabled = parseBool(getOrEmpty(_backend, calendarSourceEnabledKey(index)));
     out.color = parseColor(getOrEmpty(_backend, calendarSourceColorKey(index)));
+    log_i(TAG_CAL_SECRETS,
+          "Loaded source slot=%u enabled=%d host=%s label=%s urlHash=0x%08lx urlLen=%u alias=%d apiKey=%d color=%u",
+          static_cast<unsigned>(index), out.enabled ? 1 : 0,
+          normalized.host.c_str(),
+          calendarSourceDiagnosticLabel(normalized.normalizedUrl).c_str(),
+          static_cast<unsigned long>(calendarSourceDiagnosticHash(normalized.normalizedUrl)),
+          static_cast<unsigned>(normalized.normalizedUrl.size()),
+          out.alias.empty() ? 0 : 1, out.apiKey.empty() ? 0 : 1,
+          static_cast<unsigned>(out.color));
     return true;
 }
 

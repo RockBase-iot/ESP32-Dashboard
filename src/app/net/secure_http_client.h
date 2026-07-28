@@ -25,7 +25,13 @@ struct SecureHttpResponse {
     std::vector<uint8_t> payload;
     std::string etag;
     std::string lastModified;
+    std::string contentType;
+    std::string contentEncoding;
+    std::string transferEncoding;
     uint32_t bytesRead = 0;
+    int32_t declaredSize = -1;
+    int32_t streamResult = 0;
+    bool complete = false;
 };
 
 class SecureHttpClient {

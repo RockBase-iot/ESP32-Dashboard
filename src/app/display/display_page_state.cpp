@@ -42,8 +42,15 @@ DisplayPageState sanitizeStoredDisplayPage(int32_t rawPageId, const PageSettings
 DisplayPageState selectStartupDisplayPage(DisplayPageState persistedPage,
                                           const PageSettings &settings,
                                           bool restorePersistedPage) {
+    return selectStartupDisplayPage(persistedPage, settings, restorePersistedPage, false);
+}
+
+DisplayPageState selectStartupDisplayPage(DisplayPageState persistedPage,
+                                          const PageSettings &settings,
+                                          bool restorePersistedPage,
+                                          bool forcePersistedPage) {
     (void)settings;
-    if (!restorePersistedPage) {
+    if (!restorePersistedPage && !forcePersistedPage) {
         return DisplayPageState::homeWeather();
     }
     return persistedPage;

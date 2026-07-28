@@ -3,6 +3,12 @@
 #include <Arduino.h>
 #include <nvs_flash.h>
 
+enum class SettingsEraseResult {
+    Removed,
+    NotFound,
+    Error,
+};
+
 // Settings — thin wrapper around the ESP-IDF NVS API.
 //
 // Opens the given namespace in read-only or read-write mode.
@@ -25,6 +31,9 @@ public:
     // Boolean accessors (stored as uint8_t).
     bool    GetBool(const String &key, bool default_value = false);
     void    SetBool(const String &key, bool value);
+
+    // Erase one key without affecting the rest of the namespace.
+    SettingsEraseResult EraseKey(const String &key);
 
     // Erase all keys in this namespace (use with caution).
     void    EraseAll();

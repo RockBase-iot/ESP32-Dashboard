@@ -28,6 +28,15 @@ private:
     std::map<std::string, std::vector<uint8_t>> _files;
 };
 
+class LittleFsCacheBackend final : public ICacheBackend {
+public:
+    bool exists(const std::string &path) const override;
+    bool readFile(const std::string &path, std::vector<uint8_t> &out) const override;
+    bool writeFile(const std::string &path, const std::vector<uint8_t> &data) override;
+    bool removeFile(const std::string &path) override;
+    bool renameFile(const std::string &from, const std::string &to) override;
+};
+
 struct CacheReadResult {
     bool ok = false;
     bool fromPrevious = false;

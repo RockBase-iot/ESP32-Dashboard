@@ -19,6 +19,8 @@ struct RecurrenceRule {
     int count = 0;
     int64_t untilUtc = 0;
     std::vector<int> byWeekdays;
+    std::vector<int> byMonthDays;
+    std::vector<int> bySetPositions;
 };
 
 bool parseRecurrenceRule(const std::string &text, RecurrenceRule &rule);

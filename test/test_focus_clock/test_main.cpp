@@ -145,6 +145,21 @@ void test_active_focus_clock_uses_minute_light_sleep_refresh_ticks() {
                              focusClockNextRefreshMs(cfg, state, 1784551440LL));
 }
 
+void test_focus_clock_refresh_deadline_stays_fixed_across_button_poll_ticks() {
+    FocusClockConfig cfg;
+    cfg.focusMinutes = 25;
+    cfg.breakMinutes = 5;
+    cfg.sessionCount = 1;
+    const FocusClockRuntimeState state = startFocusClockSession(cfg, 1784551320LL);
+
+    const int64_t firstDeadline = focusClockNextRefreshUtc(cfg, state, 1784551320LL);
+
+    TEST_ASSERT_EQUAL_INT64(1784551380LL, firstDeadline);
+    TEST_ASSERT_TRUE(1784551321LL < firstDeadline);
+    TEST_ASSERT_EQUAL_INT64(1784551440LL,
+                            focusClockNextRefreshUtc(cfg, state, firstDeadline));
+}
+
 void test_focus_clock_light_wake_stop_is_user_only_and_timeboxed() {
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(ButtonAction::None),
                             static_cast<uint8_t>(focusClockActionFromLightWake(
@@ -158,6 +173,53 @@ void test_focus_clock_light_wake_stop_is_user_only_and_timeboxed() {
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(ButtonAction::None),
                             static_cast<uint8_t>(focusClockActionFromLightWake(
                                 LightWake::Timeout, 6500UL)));
+}
+
+void test_focus_clock_light_wake_is_only_a_focus_local_stop_action() {
+    FocusClockConfig cfg;
+    FocusClockRuntimeState state = startFocusClockSession(cfg, 1784551320LL);
+
+    TEST_ASSERT_FALSE(applyFocusClockButtonAction(
+        PageId::FocusClock,
+        focusClockActionFromLightWake(LightWake::BootButton, 3000UL),
+        cfg, state, 1784551330LL));
+    TEST_ASSERT_TRUE(state.active);
+
+    TEST_ASSERT_FALSE(applyFocusClockButtonAction(
+        PageId::FocusClock,
+        focusClockActionFromLightWake(LightWake::UserButton, 1999UL),
+        cfg, state, 1784551330LL));
+    TEST_ASSERT_TRUE(state.active);
+
+    TEST_ASSERT_TRUE(applyFocusClockButtonAction(
+        PageId::FocusClock,
+        focusClockActionFromLightWake(LightWake::UserButton, 2000UL),
+        cfg, state, 1784551330LL));
+    TEST_ASSERT_FALSE(state.active);
+}
+
+void test_active_focus_clock_suppresses_light_wake_from_global_navigation() {
+    FocusClockConfig cfg;
+    FocusClockRuntimeState state = startFocusClockSession(cfg, 1784551320LL);
+
+    TEST_ASSERT_TRUE(focusClockSuppressesLightWake(PageId::FocusClock,
+                                                  LightWake::BootButton,
+                                                  cfg, state,
+                                                  1784551330LL));
+    TEST_ASSERT_TRUE(focusClockSuppressesLightWake(PageId::FocusClock,
+                                                  LightWake::UserButton,
+                                                  cfg, state,
+                                                  1784551330LL));
+    TEST_ASSERT_FALSE(focusClockSuppressesLightWake(PageId::WorldClock,
+                                                   LightWake::UserButton,
+                                                   cfg, state,
+                                                   1784551330LL));
+
+    state = stopFocusClockSession();
+    TEST_ASSERT_FALSE(focusClockSuppressesLightWake(PageId::FocusClock,
+                                                   LightWake::UserButton,
+                                                   cfg, state,
+                                                   1784551330LL));
 }
 
 void test_focus_clock_awake_hold_action_fires_without_waiting_for_release() {
@@ -193,7 +255,10 @@ void setup() {
     RUN_TEST(test_focus_clock_controller_maps_user_long_press_to_page_local_toggle);
     RUN_TEST(test_active_focus_clock_blocks_page_navigation_until_complete_or_stopped);
     RUN_TEST(test_active_focus_clock_uses_minute_light_sleep_refresh_ticks);
+    RUN_TEST(test_focus_clock_refresh_deadline_stays_fixed_across_button_poll_ticks);
     RUN_TEST(test_focus_clock_light_wake_stop_is_user_only_and_timeboxed);
+    RUN_TEST(test_focus_clock_light_wake_is_only_a_focus_local_stop_action);
+    RUN_TEST(test_active_focus_clock_suppresses_light_wake_from_global_navigation);
     RUN_TEST(test_focus_clock_awake_hold_action_fires_without_waiting_for_release);
     UNITY_END();
 }

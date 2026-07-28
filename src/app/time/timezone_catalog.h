@@ -14,5 +14,6 @@ struct TimezoneCatalogEntry {
 };
 
 const std::vector<TimezoneCatalogEntry> &timezoneCatalog();
+std::string canonicalTimezoneId(const std::string &timezoneId);
 std::string timezonePosixRule(const std::string &iana);
 int timezoneOffsetSecondsAtUtc(const std::string &iana, int64_t utcSeconds);

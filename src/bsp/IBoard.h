@@ -70,6 +70,10 @@ public:
     // the wake. Boards without buttons wake on the timer only.
     virtual LightWake lightSleepMs(uint32_t maxMs) = 0;
 
+    // Timer-only light sleep. Used by page-local modes that poll buttons after
+    // waking instead of allowing a GPIO wake to escape into global handling.
+    virtual LightWake timerOnlyLightSleepMs(uint32_t maxMs) = 0;
+
     // GPIO pin numbers for physical buttons (external pull-up, pressed = LOW).
     // Returns 0xFF if this board does not have the button.
     virtual uint8_t bootButtonPin() const = 0;  // IO0 / BOOT key on NM-EPD-420

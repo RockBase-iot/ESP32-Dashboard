@@ -54,3 +54,5 @@ bool isValidCalendarSourceIndex(uint8_t index);
 std::string maskCalendarSecret(const std::string &value);
 std::string maskCalendarUrlForDisplay(const std::string &normalizedUrl,
                                       const std::string &host);
+std::string calendarSourceDiagnosticLabel(const std::string &rawUrl);
+uint32_t calendarSourceDiagnosticHash(const std::string &rawUrl);

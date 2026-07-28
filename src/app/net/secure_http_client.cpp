@@ -6,6 +6,39 @@
 #include "app/calendar/calendar_source.h"
 
 namespace {
+class BoundedPayloadStream final : public Stream {
+public:
+    BoundedPayloadStream(std::vector<uint8_t> &payload, size_t maxBytes)
+        : _payload(payload), _maxBytes(maxBytes) {}
+
+    using Print::write;
+
+    size_t write(uint8_t byte) override {
+        return write(&byte, 1);
+    }
+
+    size_t write(const uint8_t *buffer, size_t size) override {
+        if (!buffer || _payload.size() + size > _maxBytes) {
+            _overflow = true;
+            return 0;
+        }
+        _payload.insert(_payload.end(), buffer, buffer + size);
+        return size;
+    }
+
+    int available() override { return 0; }
+    int read() override { return -1; }
+    int peek() override { return -1; }
+    void flush() override {}
+
+    bool overflowed() const { return _overflow; }
+
+private:
+    std::vector<uint8_t> &_payload;
+    size_t _maxBytes;
+    bool _overflow = false;
+};
+
 bool isRedirectStatus(int code) {
     return code == 301 || code == 302 || code == 303 || code == 307 || code == 308;
 }
@@ -47,6 +80,7 @@ SecureHttpResponse SecureHttpClient::get(const SecureHttpRequest &request) {
         HTTPClient http;
         http.setTimeout(request.timeoutMs);
         http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+        http.setAcceptEncoding("identity");
         if (!http.begin(client, currentUrl.c_str())) {
             response.state = SourceState::Tls;
             return response;
@@ -57,8 +91,10 @@ SecureHttpResponse SecureHttpClient::get(const SecureHttpRequest &request) {
         if (!request.lastModified.empty()) {
             http.addHeader("If-Modified-Since", request.lastModified.c_str());
         }
-        const char *responseHeaders[] = {"ETag", "Last-Modified", "Location", "Retry-After"};
-        http.collectHeaders(responseHeaders, 4);
+        const char *responseHeaders[] = {"ETag", "Last-Modified", "Location", "Retry-After",
+                                         "Content-Type", "Content-Encoding",
+                                         "Transfer-Encoding"};
+        http.collectHeaders(responseHeaders, 7);
 
         const int code = http.GET();
         response.statusCode = code;
@@ -86,39 +122,36 @@ SecureHttpResponse SecureHttpClient::get(const SecureHttpRequest &request) {
         }
 
         const int declaredSize = http.getSize();
+        response.declaredSize = declaredSize;
+        response.contentType = http.header("Content-Type").c_str();
+        response.contentEncoding = http.header("Content-Encoding").c_str();
+        response.transferEncoding = http.header("Transfer-Encoding").c_str();
+        response.etag = http.header("ETag").c_str();
+        response.lastModified = http.header("Last-Modified").c_str();
         if (declaredSize > 0 && static_cast<uint32_t>(declaredSize) > request.maxBytes) {
             response.state = SourceState::Limit;
             http.end();
             return response;
         }
 
-        auto *stream = http.getStreamPtr(); // WiFiClient* (2.x) / NetworkClient* (3.x)
-        uint8_t buffer[512];
-        while (http.connected() && (declaredSize < 0 ||
-                                    response.payload.size() < static_cast<size_t>(declaredSize))) {
-            const size_t available = stream->available();
-            if (available == 0) {
-                delay(1);
-                continue;
-            }
-            const size_t toRead = available < sizeof(buffer) ? available : sizeof(buffer);
-            const int read = stream->readBytes(buffer, toRead);
-            if (read <= 0) {
-                break;
-            }
-            if (response.payload.size() + static_cast<size_t>(read) > request.maxBytes) {
-                response.state = SourceState::Limit;
-                http.end();
-                return response;
-            }
-            response.payload.insert(response.payload.end(), buffer, buffer + read);
-        }
-
+        BoundedPayloadStream payloadStream(response.payload, request.maxBytes);
+        response.streamResult = http.writeToStream(&payloadStream);
         response.bytesRead = static_cast<uint32_t>(response.payload.size());
-        response.etag = http.header("ETag").c_str();
-        response.lastModified = http.header("Last-Modified").c_str();
+        if (payloadStream.overflowed()) {
+            response.state = SourceState::Limit;
+            http.end();
+            return response;
+        }
+        if (response.streamResult < 0 ||
+            static_cast<size_t>(response.streamResult) != response.payload.size() ||
+            (declaredSize >= 0 && response.payload.size() != static_cast<size_t>(declaredSize))) {
+            response.state = SourceState::Tls;
+            http.end();
+            return response;
+        }
         response.state = SourceState::Ok;
         response.changed = true;
+        response.complete = true;
         http.end();
         return response;
     }

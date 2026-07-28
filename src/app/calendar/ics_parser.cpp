@@ -6,6 +6,8 @@
 #include <map>
 #include <string>
 
+#include "app/calendar/timezone_resolver.h"
+
 namespace {
 struct ParsedProperty {
     std::string name;
@@ -100,7 +102,8 @@ int64_t epochUtc(int year, int month, int day, int hour, int minute, int second)
     return days * 86400LL + hour * 3600LL + minute * 60LL + second;
 }
 
-DateTimeParse parseDateTimeValue(const ParsedProperty &prop) {
+DateTimeParse parseDateTimeValue(const ParsedProperty &prop,
+                                 const std::string &defaultTimezoneId) {
     DateTimeParse result;
     const auto valueParam = prop.params.find("VALUE");
     const bool dateOnly = valueParam != prop.params.end() && upperAscii(valueParam->second) == "DATE";
@@ -135,7 +138,15 @@ DateTimeParse parseDateTimeValue(const ParsedProperty &prop) {
     if (prop.value.empty() || prop.value.back() != 'Z') {
         result.floating = true;
     }
-    result.utc = epochUtc(year, month, day, hour, minute, second);
+    if (result.floating) {
+        if (result.tzid.empty()) {
+            result.tzid = defaultTimezoneId.empty() ? "Etc/UTC" : defaultTimezoneId;
+        }
+        TimezoneResolver resolver;
+        result.utc = resolver.toUtc(result.tzid, LocalDateTime{year, month, day, hour, minute, second});
+    } else {
+        result.utc = epochUtc(year, month, day, hour, minute, second);
+    }
     return result;
 }
 
@@ -181,7 +192,23 @@ CalendarEventStatus parseStatus(const std::string &value) {
 bool validEvent(const CalendarEvent &event) {
     return !event.uid.empty() && event.startUtc > 0;
 }
+
+void failParse(IcsParseResult &result, IcsParseError error) {
+    result.state = SourceState::Parse;
+    result.error = error;
+}
 }  // namespace
+
+const char *icsParseErrorName(IcsParseError error) {
+    switch (error) {
+        case IcsParseError::None: return "None";
+        case IcsParseError::InvalidLine: return "InvalidLine";
+        case IcsParseError::MissingCalendarBegin: return "MissingCalendarBegin";
+        case IcsParseError::MissingCalendarEnd: return "MissingCalendarEnd";
+        case IcsParseError::TruncatedEvent: return "TruncatedEvent";
+    }
+    return "Unknown";
+}
 
 IcsParseResult IcsParser::parse(const std::string &sourceId, IcsByteReader &reader,
                                 IcsEventSink &sink,
@@ -189,6 +216,8 @@ IcsParseResult IcsParser::parse(const std::string &sourceId, IcsByteReader &read
     IcsParseResult result;
     IcsLineReader lines(reader);
     bool inCalendar = false;
+    bool sawCalendarBegin = false;
+    bool sawCalendarEnd = false;
     bool inEvent = false;
     bool skipUntilEventEnd = false;
     bool inAlarm = false;
@@ -206,26 +235,41 @@ IcsParseResult IcsParser::parse(const std::string &sourceId, IcsByteReader &read
                 skipUntilEventEnd = true;
                 continue;
             }
-            result.state = SourceState::Parse;
+            failParse(result, IcsParseError::InvalidLine);
             return result;
         }
 
+        ++result.lineCount;
+        std::string lineText = line.text;
+        if (result.lineCount == 1 && lineText.size() >= 3 &&
+            static_cast<unsigned char>(lineText[0]) == 0xEF &&
+            static_cast<unsigned char>(lineText[1]) == 0xBB &&
+            static_cast<unsigned char>(lineText[2]) == 0xBF) {
+            lineText.erase(0, 3);
+        }
+
         ParsedProperty prop;
-        if (!parseProperty(line.text, prop)) {
+        if (!parseProperty(lineText, prop)) {
             if (inEvent) {
                 skipUntilEventEnd = true;
                 continue;
             }
-            result.state = SourceState::Parse;
+            failParse(result, IcsParseError::InvalidLine);
             return result;
         }
         if (prop.name == "BEGIN" && upperAscii(prop.value) == "VCALENDAR") {
             inCalendar = true;
+            sawCalendarBegin = true;
             continue;
         }
         if (!inCalendar) {
-            result.state = SourceState::Parse;
+            failParse(result, IcsParseError::MissingCalendarBegin);
             return result;
+        }
+        if (prop.name == "END" && upperAscii(prop.value) == "VCALENDAR") {
+            sawCalendarEnd = true;
+            inCalendar = false;
+            break;
         }
         if (prop.name == "BEGIN" && upperAscii(prop.value) == "VEVENT") {
             inEvent = true;
@@ -278,7 +322,7 @@ IcsParseResult IcsParser::parse(const std::string &sourceId, IcsByteReader &read
             event.description = truncateCalendarUtf8(unescapeIcsText(prop.value),
                                                      options.maxDescriptionBytes);
         } else if (prop.name == "DTSTART") {
-            const DateTimeParse parsed = parseDateTimeValue(prop);
+            const DateTimeParse parsed = parseDateTimeValue(prop, options.defaultTimezoneId);
             if (!parsed.ok) {
                 skipUntilEventEnd = true;
                 continue;
@@ -288,7 +332,7 @@ IcsParseResult IcsParser::parse(const std::string &sourceId, IcsByteReader &read
             event.startFloating = parsed.floating;
             event.startTzid = parsed.tzid;
         } else if (prop.name == "DTEND") {
-            const DateTimeParse parsed = parseDateTimeValue(prop);
+            const DateTimeParse parsed = parseDateTimeValue(prop, options.defaultTimezoneId);
             if (!parsed.ok) {
                 skipUntilEventEnd = true;
                 continue;
@@ -299,7 +343,7 @@ IcsParseResult IcsParser::parse(const std::string &sourceId, IcsByteReader &read
         } else if (prop.name == "DURATION") {
             durationSeconds = parseDurationSeconds(prop.value);
         } else if (prop.name == "DTSTAMP") {
-            event.dtstampUtc = parseDateTimeValue(prop).utc;
+            event.dtstampUtc = parseDateTimeValue(prop, "Etc/UTC").utc;
         } else if (prop.name == "SEQUENCE") {
             event.sequence = static_cast<uint32_t>(std::strtoul(prop.value.c_str(), nullptr, 10));
         } else if (prop.name == "STATUS") {
@@ -315,8 +359,12 @@ IcsParseResult IcsParser::parse(const std::string &sourceId, IcsByteReader &read
         }
     }
 
-    if (!inCalendar) {
-        result.state = SourceState::Parse;
+    if (inEvent) {
+        failParse(result, IcsParseError::TruncatedEvent);
+    } else if (!sawCalendarBegin) {
+        failParse(result, IcsParseError::MissingCalendarBegin);
+    } else if (!sawCalendarEnd) {
+        failParse(result, IcsParseError::MissingCalendarEnd);
     }
     return result;
 }

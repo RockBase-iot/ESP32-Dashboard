@@ -169,14 +169,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--rb-primary); box
 </div>
 <aside class="side" id="side">
   <nav class="nav">
-    <button class="active" data-page="pages" onclick="showPage('pages', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Pages</button>
+    <button class="active" data-page="device" onclick="showPage('device', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Device</button>
+    <button data-page="pages" onclick="showPage('pages', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Pages</button>
     <button data-page="sources" onclick="showPage('sources', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg>Data Sources</button>
-    <button data-page="device" onclick="showPage('device', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Device</button>
     <button data-page="logs" onclick="showPage('logs', this)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>Logs</button>
   </nav>
 </aside>
 <main class="main">
-  <section class="page active" id="page-pages">
+  <section class="page" id="page-pages">
     <div class="hero">
       <div>
         <h1>Pages</h1>
@@ -323,7 +323,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--rb-primary); box
     </div>
   </section>
 
-  <section class="page" id="page-device">
+  <section class="page active" id="page-device">
     <div class="hero">
       <div><h1>Device</h1><p class="lead">Network, schedule, units, and display settings. Saving offers an immediate restart so the new configuration can apply now.</p></div>
       <div class="actions"><button class="btn primary" onclick="saveDevice()">Save Device</button></div>
@@ -489,7 +489,9 @@ function collectWorldZonesText() {
   return lines.join('\n');
 }
 function api(path, opts) {
-  return fetch(path, opts || {}).then(function(r) {
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  return fetch(path, opts).then(function(r) {
     return r.text().then(function(t) {
       var data = {};
       try { data = t ? JSON.parse(t) : {}; } catch(e) { data = { raw: t }; }

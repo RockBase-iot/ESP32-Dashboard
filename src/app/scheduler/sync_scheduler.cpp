@@ -58,3 +58,26 @@ PageSyncRequirements syncRequirementsForDisplayPage(bool homeWeather, PageId pag
     }
     return requirements;
 }
+
+PageSyncRequirements missingSyncRequirements(const PageSyncRequirements &required,
+                                             const PageSyncRequirements &completed) {
+    PageSyncRequirements missing;
+    missing.weather = required.weather && !completed.weather;
+    missing.calendar = required.calendar && !completed.calendar;
+    missing.finance = required.finance && !completed.finance;
+    missing.news = required.news && !completed.news;
+    return missing;
+}
+
+void markSyncRequirementsCompleted(PageSyncRequirements &completed,
+                                   const PageSyncRequirements &finished) {
+    completed.weather = completed.weather || finished.weather;
+    completed.calendar = completed.calendar || finished.calendar;
+    completed.finance = completed.finance || finished.finance;
+    completed.news = completed.news || finished.news;
+}
+
+bool hasSyncRequirements(const PageSyncRequirements &requirements) {
+    return requirements.weather || requirements.calendar ||
+           requirements.finance || requirements.news;
+}
