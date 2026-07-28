@@ -1,6 +1,6 @@
-﻿# ESP32 Dashboard
+# ESP32 Dashboard
 
-An e-paper dashboard running on ESP32. The current version features a fully functional weather station powered by the free [Open-Meteo](https://open-meteo.com/) API — **no API key required** — showing current conditions, a 5-day forecast, an hourly temperature / precipitation graph, air quality, and indoor sensor data.
+An e-paper dashboard running on ESP32. The current version includes multiple production pages (weather, timeline, world clock, focus clock, and more) and is powered by the free [Open-Meteo](https://open-meteo.com/) API for weather data — **no API key required**.
 
 This is just the beginning. The roadmap includes cryptocurrency prices, stock market data, local IoT device monitoring, and more — living up to the vision of a true **"Dashboard for anything"** on e-paper.
 
@@ -18,9 +18,25 @@ English | [简体中文](./README_cn.md)
 |:-:|:-:|:-:|
 | ![poweron](image/poweron.png) | ![wakingup](image/wakingup.png) | ![weather](image/WeatherPgae.png) |
 
-| AP config mode | Web config portal (overview) | Web config portal (settings) |
+| AP config mode | Device menu | Pages menu |
 |:-:|:-:|:-:|
-| ![apmode](image/AP%20mode.png) | ![web1](image/web1.png) | ![web3](image/web3.png) |
+| ![apmode](image/AP%20mode.png) | ![device](image/device.png) | ![pages](image/pages.png) |
+
+| Data-source menu | Focus clock menu | Focus clock page |
+|:-:|:-:|:-:|
+| ![data-sources](image/data-sources.png) | ![focus-menu](image/focus%20clock.png) | ![p8-focus-clock](image/P8.png) |
+
+| P0 Standard page | P1 Weather Today | P2 Today Overview |
+|:-:|:-:|:-:|
+| ![p0](image/P0.png) | ![p1](image/P1.png) | ![p2](image/P2.png) |
+
+| P4 Weekly Timeline | P5 Monthly Overview | P6 Weekly Weather |
+|:-:|:-:|:-:|
+| ![p4](image/P4.png) | ![p5](image/P5.png) | ![p6](image/P6.png) |
+
+| P7 World Clock | P8 Focus Clock |
+|:-:|:-:|
+| ![p7](image/P7.png) | ![p8](image/P8.png) |
 
 ---
 
@@ -35,12 +51,38 @@ English | [简体中文](./README_cn.md)
 - Deep sleep between updates (configurable interval, default 30 min)
 - Bed-time / wake-time window — no display refresh during night hours
 - Browser-based config portal (no app needed): WiFi, location, units, timezone, sleep interval
+- Updated web config menus: `device` / `pages` / `data-source`
+- Focus clock can be configured independently (dedicated duration setting)
 - AP config mode (long-press Boot button) — ESP32 becomes a hotspot for first-time setup
-- Stay-awake web portal mode (short-press Boot button) — keep the portal alive for 5 min
+- Power-on config window (configurable `PortalSec`, default 30 s) — after each WiFi connection the web portal stays reachable at the device IP; `0` disables it for maximum power saving
 - SNTP time synchronisation with configurable UTC offset
 - 3-color (red/black/white) accent support on compatible panels
 - Multilingual UI: `en_US`, `zh_CN`
 - Configurable units: °C / °F, km/h / m/s / mph / kn, hPa / inHg / mmHg, km / mi, mm / in
+
+---
+
+## Page Status (Latest)
+
+| Page ID | Name | Status |
+|---|---|---|
+| `P0` | Standard page | Unchanged |
+| `P1` | WEATHER TODAY | Implemented |
+| `P2` | TODAY OVERVIEW | Implemented |
+| `P4` | WEEKLY TIMELINE | Implemented |
+| `P5` | MONTHLY OVERVIEW | Implemented |
+| `P6` | WEEKLY WEATHER | Implemented |
+| `P7` | WORLD CLOCK | Implemented |
+| `P8` | FOCUS CLOCK | Implemented |
+
+`P3` is currently not listed in the active release mapping.
+
+---
+
+## Calendar Sync Notes
+
+- To sync Google Calendar (and similar providers), configure a **Google Calendar ICS** URL in data-source settings.
+- Outlook Calendar and Apple Calendar are **not fully tested yet** in the current release.
 
 ---
 
@@ -99,22 +141,76 @@ Select the environment that matches your hardware:
 
 ```bash
 # NM Display 420 (ESP32-S3, 4.2" tri-color EPD)
-pio run -e nm-display-420 -t upload
+pio run -e nm-display-420 -t upload_all
 ```
 
-The LittleFS filesystem image (web portal HTML) is built and uploaded automatically via `extra_script_fs.py`.
+Use `upload_all` for normal device flashing. It builds and uploads the firmware,
+generates the gzipped web assets, then uploads the LittleFS filesystem image
+that contains the web portal. If the portal shows `Web assets not uploaded`,
+flash the complete image again with:
 
-### 4. First-time configuration (AP mode)
+```bash
+pio run -e nm-display-420 -t upload_all --upload-port <PORT>
+```
+
+For a release package that users can flash as one file at address `0x0`, build
+the merged image:
+
+```bash
+pio run -e nm-display-420 -t release_bin
+```
+
+The output is written to `release/` using the pattern
+`esp32-dashboard-<device>-<version>.bin`, for example
+`release/esp32-dashboard-nm-epd-420-v1.0.0.bin`. The version comes from the
+root `VERSION` file.
+
+### 4. Test & build gates
+
+Run the focused PlatformIO build-only tests before firmware changes:
+
+```bash
+pio test -e nm-display-420 -f test_display_page_state --without-uploading --without-testing
+pio test -e nm-display-420 -f test_wake_coordinator --without-uploading --without-testing
+```
+
+The project no longer defines `env:native`; tests are compiled for the current
+embedded target. `--without-uploading --without-testing` is a build-only gate:
+it proves the test firmware compiles, but it does not execute Unity assertions
+unless you upload/run tests on hardware.
+
+The release build gates are:
+
+```bash
+pio test -e nm-display-420 -f test_display_page_state --without-uploading --without-testing
+pio test -e nm-display-420 -f test_wake_coordinator --without-uploading --without-testing
+pio test -e nm-display-420 -f test_legacy_config_migration --without-uploading --without-testing
+pio test -e nm-display-420 -f test_source_runtime_cache --without-uploading --without-testing
+pio run -e nm-display-420
+pio run -e nm-display-420 -t buildfs
+pio run -e nm-display-420 -t release_bin
+```
+
+### 5. Manuals and launch docs
+
+| Topic | English | Chinese |
+|---|---|---|
+| User guide | [docs/user-guide.md](docs/user-guide.md) | [docs/user-guide-zh.md](docs/user-guide-zh.md) |
+| Data sources | [docs/data-sources.md](docs/data-sources.md) | [docs/data-sources-zh.md](docs/data-sources-zh.md) |
+| Privacy and security | [docs/privacy-security.md](docs/privacy-security.md) | [docs/privacy-security-zh.md](docs/privacy-security-zh.md) |
+| Recovery and reflash | [docs/recovery-reflash.md](docs/recovery-reflash.md) | [docs/recovery-reflash-zh.md](docs/recovery-reflash-zh.md) |
+
+### 6. First-time configuration (AP mode)
 
 1. Hold the **Boot button (IO0) for ≥ 2 seconds** on first power-on to enter **AP config mode**.
-2. The display shows the hotspot name (`esp_dashboard_XXXXXX`) and the URL `192.168.4.1`.
+2. The display shows the hotspot name (`esp_dashboard_XXXXXX`), the temporary WPA2 key, and the URL `192.168.4.1`.
 3. Connect your phone or PC to that hotspot, open `http://192.168.4.1`.
 4. Fill in WiFi credentials, latitude / longitude, city name, UTC offset, and preferred units; click **Save**.
 5. The device restarts, connects to your home WiFi, fetches weather, and refreshes the display.
 
-### 5. Subsequent access
+### 7. Subsequent access
 
-Short-press the Boot button to keep the web portal alive for 5 minutes. The device stays on your home network; its IP address is shown at the bottom-left of the display. Open `http://<device-ip>` from any browser on the same network.
+After every wake the device keeps its WiFi connection open for a configurable window (`PortalSec`, default 30 s, `0` = disabled). During that window its IP address is shown at the bottom-left of the display — open `http://<device-ip>` from any browser on the same network to change settings. Saving in the portal offers an immediate restart so the new configuration is applied right away; otherwise it takes effect on the next wake.
 
 ---
 
@@ -122,8 +218,8 @@ Short-press the Boot button to keep the web portal alive for 5 minutes. The devi
 
 | Action | Result |
 |---|---|
-| Short press Boot (IO0) | 5-minute stay-awake web portal |
-| Long press Boot (IO0) ≥ 2 s | AP config mode (auto-exit after 10 min, then restart) |
+| Short press Boot (IO0) | Next page (while the device is awake) |
+| Long press Boot (IO0) ≥ 2 s | AP config mode (auto-exit after 360 s, then restart) |
 
 ---
 
@@ -140,6 +236,7 @@ All settings are stored in NVS flash and editable through the web portal:
 | City name | `Chengdu, Sichuan, China` | Display label only |
 | UTC offset | `8` | Hours from UTC (e.g. `8` = UTC+8) |
 | Sleep interval | `30` min | Minutes between display refreshes |
+| Config window | `30` s | Seconds the web portal stays reachable after each wake (`0`–`600`, `0` = off) |
 | Bed time | `0` h | Hour to pause refreshing (24-h clock) |
 | Wake time | `6` h | Hour to resume refreshing |
 | Temperature unit | `C` | `C` / `F` |
@@ -213,14 +310,14 @@ Power-on / timer wakeup
   _detectWakeup()
   ┌─────────────────────────────────┐
   │ Long press (≥2 s) → AP mode    │
-  │ Short press       → stay-awake │
+  │ Short press       → next page  │
   │ Timer / cold boot → normal     │
   └─────────────────────────────────┘
         │
         ▼
   _initHardware()      EPD init + sensor init
         │
-        ├─── AP mode ──► SoftAP + web portal → restart after 10 min
+        ├─── AP mode ──► SoftAP + web portal → restart after 360 s
         │
         ▼
   _showLoadingPage()   (cold boot / button wake only)
@@ -234,7 +331,7 @@ Power-on / timer wakeup
         ▼
   _renderWeather()     EPD page-based draw loop
         │
-        ▼  (stay-awake: run web portal for 5 min)
+        ▼  (PortalSec > 0: web portal + buttons for N s)
   WiFi disconnect → EPD hibernate → deep sleep (N minutes)
 ```
 

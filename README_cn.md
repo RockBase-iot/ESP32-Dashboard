@@ -1,6 +1,6 @@
-﻿# ESP32 Dashboard
+# ESP32 Dashboard
 
-基于 ESP32 的墨水屏 Dashboard。当前版本已完整实现天气站功能，使用完全免费的 [Open-Meteo](https://open-meteo.com/) API（**无需注册、无需 API Key**），显示当前天气、5 天预报、逐小时气温/降水概率折线图、空气质量及室内传感器数据。
+基于 ESP32 的墨水屏 Dashboard。当前版本已包含多个可用页面（天气、时间线、世界时钟、专注时钟等），天气数据由免费的 [Open-Meteo](https://open-meteo.com/) API 提供（**无需注册、无需 API Key**）。
 
 这只是一个开始。后续计划陆续加入加密货币行情、股市数据、本地 IoT 设备监控等更多功能——真正发挥出墨水屏上 **"Dashboard Any"** 的潜力。
 
@@ -18,9 +18,25 @@
 |:-:|:-:|:-:|
 | ![poweron](image/poweron.png) | ![wakingup](image/wakingup.png) | ![weather](image/WeatherPgae.png) |
 
-| AP 配置模式 | Web 配置页面（概览） | Web 配置页面（设置） |
+| AP 配置模式 | Device 菜单 | Pages 菜单 |
 |:-:|:-:|:-:|
-| ![apmode](image/AP%20mode.png) | ![web1](image/web1.png) | ![web3](image/web3.png) |
+| ![apmode](image/AP%20mode.png) | ![device](image/device.png) | ![pages](image/pages.png) |
+
+| Data-source 菜单 | Focus clock 菜单 | Focus clock 页面 |
+|:-:|:-:|:-:|
+| ![data-sources](image/data-sources.png) | ![focus-menu](image/focus%20clock.png) | ![p8-focus-clock](image/P8.png) |
+
+| P0 标准页面 | P1 Weather Today | P2 Today Overview |
+|:-:|:-:|:-:|
+| ![p0](image/P0.png) | ![p1](image/P1.png) | ![p2](image/P2.png) |
+
+| P4 Weekly Timeline | P5 Monthly Overview | P6 Weekly Weather |
+|:-:|:-:|:-:|
+| ![p4](image/P4.png) | ![p5](image/P5.png) | ![p6](image/P6.png) |
+
+| P7 World Clock | P8 Focus Clock |
+|:-:|:-:|
+| ![p7](image/P7.png) | ![p8](image/P8.png) |
 
 ---
 
@@ -35,12 +51,38 @@
 - 深度睡眠节能，刷新间隔可配置（默认 30 分钟）
 - 就寝/起床时间窗口，夜间不刷新
 - 浏览器 Web 配置页面：WiFi、位置、单位制、时区、刷新间隔（无需 App）
+- 网页配置菜单已更新：支持 `device` / `pages` / `data-source`
+- Focus clock 支持单独配置时长
 - AP 配置模式（长按 Boot 键）：ESP32 作为热点，首次配网专用
-- 短按 Boot 键：保持 Web 配置页面活跃 5 分钟
+- 上电配置窗口（`PortalSec` 可配置，默认 30 秒）：每次连上 WiFi 后，Web 配置页面可在设备 IP 上访问；设为 `0` 可关闭以最大化省电
 - SNTP 时间同步，可配置 UTC 偏移
 - 三色（红/黑/白）墨水屏配色支持
 - 多语言 UI：`zh_CN`、`en_US`
 - 可配置单位制：°C / °F、km/h / m/s / mph / kn、hPa / inHg / mmHg、km / mi、mm / in
+
+---
+
+## 页面状态（最新）
+
+| 页面编号 | 名称 | 状态 |
+|---|---|---|
+| `P0` | 标准页面 | 未变化 |
+| `P1` | WEATHER TODAY | 已实现 |
+| `P2` | TODAY OVERVIEW | 已实现 |
+| `P4` | WEEKLY TIMELINE | 已实现 |
+| `P5` | MONTHLY OVERVIEW | 已实现 |
+| `P6` | WEEKLY WEATHER | 已实现 |
+| `P7` | WORLD CLOCK | 已实现 |
+| `P8` | FOCUS CLOCK | 已实现 |
+
+当前版本的激活页面映射中未列出 `P3`。
+
+---
+
+## 日历同步说明
+
+- 如需同步 Google 等日历，请在 data-source 中配置 **Google 日历 ICS** 链接。
+- Outlook 日历与 Apple 日历在当前版本中**尚未完成测试**。
 
 ---
 
@@ -99,10 +141,47 @@ cd ESP32-Dashboard
 
 ```bash
 # NM Display 420（ESP32-S3，4.2" 三色墨水屏）
-pio run -e nm-display-420 -t upload
+pio run -e nm-display-420 -t upload_all
 ```
 
-LittleFS 文件系统镜像（Web 页面 HTML）由 `extra_script_fs.py` 自动打包并烧录。
+`upload_all` 会先上传固件，生成压缩后的网页资源，再上传包含 Web 配置界面的
+LittleFS 文件系统。如果网页提示 `Web assets not uploaded`，请重新执行完整烧录：
+
+```bash
+pio run -e nm-display-420 -t upload_all --upload-port <PORT>
+```
+
+### 发布用单文件固件
+
+面向用户发布时，生成一个可从 `0x0` 地址写入的合并固件：
+
+```bash
+pio run -e nm-display-420 -t release_bin
+```
+
+输出文件位于 `release/`，命名格式为 `esp32-dashboard-设备名-版本号.bin`，例如：
+
+```text
+release/esp32-dashboard-nm-epd-420-v1.0.0.bin
+```
+
+版本号来自根目录 `VERSION` 文件。
+
+### 3.1 测试与构建门禁
+
+当前 `platformio.ini` 不再包含 `env:native`。CI 和本地验证使用
+`nm-display-420` 的 embedded build-only 测试；`--without-uploading
+--without-testing` 只验证测试固件可编译，不会在硬件上执行 Unity 断言。
+
+```bash
+pio test -e nm-display-420 -f test_display_page_state --without-uploading --without-testing
+pio test -e nm-display-420 -f test_wake_coordinator --without-uploading --without-testing
+pio test -e nm-display-420 -f test_legacy_config_migration --without-uploading --without-testing
+pio test -e nm-display-420 -f test_source_runtime_cache --without-uploading --without-testing
+pio run -e nm-display-420
+pio run -e nm-display-420 -t buildfs
+pio run -e nm-display-420 -t release_bin
+```
 
 ### 4. 首次配置（AP 模式）
 
@@ -114,7 +193,7 @@ LittleFS 文件系统镜像（Web 页面 HTML）由 `extra_script_fs.py` 自动�
 
 ### 5. 后续访问
 
-短按 Boot 键可将 Web 配置页面保持活跃 5 分钟。设备保持连接到家庭网络，IP 地址显示在屏幕左下角。从同一局域网任意浏览器访问 `http://<设备IP>` 即可进入配置页面。
+每次唤醒后，设备会保持 WiFi 连接一段可配置的时间（`PortalSec`，默认 30 秒，`0` 表示关闭）。窗口期间设备 IP 显示在屏幕左下角，从同一局域网任意浏览器访问 `http://<设备IP>` 即可进入配置页面。在配置页保存后会提示立即重启，确认后新配置即刻生效；否则将在下次唤醒时生效。
 
 ---
 
@@ -122,8 +201,8 @@ LittleFS 文件系统镜像（Web 页面 HTML）由 `extra_script_fs.py` 自动�
 
 | 操作 | 效果 |
 |---|---|
-| 短按 Boot（IO0） | Web 配置页面保持活跃 5 分钟 |
-| 长按 Boot（IO0）≥ 2 秒 | AP 配置模式（10 分钟后自动重启） |
+| 短按 Boot（IO0） | 下一页（设备唤醒期间） |
+| 长按 Boot（IO0）≥ 2 秒 | AP 配置模式（360 秒后自动重启） |
 
 ---
 
@@ -140,6 +219,7 @@ LittleFS 文件系统镜像（Web 页面 HTML）由 `extra_script_fs.py` 自动�
 | 城市名称 | `Chengdu, Sichuan, China` | 仅用于屏幕显示 |
 | UTC 偏移 | `8` | 与 UTC 的小时差，如 `8` 表示 UTC+8 |
 | 睡眠间隔 | `30` 分钟 | 两次刷新之间的深睡时长 |
+| 配置窗口 | `30` 秒 | 每次唤醒后 Web 配置页面保持可访问的秒数（`0`–`600`，`0` = 关闭） |
 | 就寝时间 | `0` 时 | 停止刷新的整点小时（24 小时制） |
 | 起床时间 | `6` 时 | 恢复刷新的整点小时 |
 | 温度单位 | `C` | `C` / `F` |
@@ -213,14 +293,14 @@ src/
   _detectWakeup()
   ┌──────────────────────────────────┐
   │ 长按（≥2 秒） → AP 配置模式     │
-  │ 短按          → 保持唤醒         │
+  │ 短按          → 下一页          │
   │ 定时器 / 冷启动 → 正常流程      │
   └──────────────────────────────────┘
         │
         ▼
   _initHardware()      墨水屏初始化 + 传感器初始化
         │
-        ├─── AP 模式 ──► SoftAP + Web 门户 → 10 分钟后重启
+        ├─── AP 模式 ──► SoftAP + Web 门户 → 360 秒后重启
         │
         ▼
   _showLoadingPage()   （冷启动 / 按键唤醒时显示）
@@ -234,7 +314,7 @@ src/
         ▼
   _renderWeather()     墨水屏分页渲染循环
         │
-        ▼  （保持唤醒模式：Web 门户活跃 5 分钟）
+        ▼  （PortalSec > 0：Web 门户 + 按键窗口 N 秒）
   WiFi 断开 → 墨水屏休眠 → 深度睡眠（N 分钟）
 ```
 

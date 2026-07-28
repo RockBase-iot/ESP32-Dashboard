@@ -42,7 +42,7 @@ void PageError400x300::draw() {
         int16_t bx, by;
         uint16_t bw, bh;
         _gfx->getTextBounds(_body, 0, 0, &bx, &by, &bw, &bh);
-        _gfx->setCursor(cx - bw / 2, cy + iconSz / 2 + 11 + 28 + bh);
+        _gfx->setCursor(cx - bw / 2, cy + iconSz / 2 + 11 + 38 + bh);
         _gfx->print(_body);
     }
 }

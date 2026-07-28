@@ -73,9 +73,33 @@ public:
         return static_cast<uint32_t>(raw * 3300UL * 2 / 4095);
     }
 
+    void prepareForSleep() override {
+        pinMode(PIN_EPD_PWR, OUTPUT);
+        digitalWrite(PIN_EPD_PWR, LOW);
+    }
+
     void deepSleep(uint64_t microseconds) override {
+        prepareForSleep();
         esp_sleep_enable_timer_wakeup(microseconds);
         esp_deep_sleep_start();
+    }
+
+    LightWake lightSleepMs(uint32_t maxMs) override {
+        // No buttons on this board — timer-only light sleep.
+        if (maxMs > 0) {
+            esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(maxMs) * 1000ULL);
+        }
+        Serial.flush();
+        esp_light_sleep_start();
+        const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+        return classifyLightWake(cause == ESP_SLEEP_WAKEUP_TIMER,
+                                 /*gpioFired=*/false, /*gpioWakeStatus=*/0,
+                                 /*bootPin=*/0xFF, /*userPin=*/0xFF,
+                                 /*bootPressedNow=*/false, /*userPressedNow=*/false);
+    }
+
+    LightWake timerOnlyLightSleepMs(uint32_t maxMs) override {
+        return lightSleepMs(maxMs);
     }
 
     uint8_t bootButtonPin() const override { return 0xFF; } // not present

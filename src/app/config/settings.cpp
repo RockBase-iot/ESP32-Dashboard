@@ -1,9 +1,6 @@
 #include "settings.h"
 
 #include <nvs.h>
-#include "utils/logger.h"
-
-static const char *TAG = "Settings";
 
 Settings::Settings(const String &ns, bool read_write) : _read_write(read_write) {
     nvs_flash_init();
@@ -56,6 +53,14 @@ bool Settings::GetBool(const String &key, bool default_value) {
 void Settings::SetBool(const String &key, bool value) {
     if (!_handle || !_read_write) return;
     nvs_set_u8(_handle, key.c_str(), value ? 1 : 0);
+}
+
+SettingsEraseResult Settings::EraseKey(const String &key) {
+    if (!_handle || !_read_write) return SettingsEraseResult::Error;
+    const esp_err_t result = nvs_erase_key(_handle, key.c_str());
+    if (result == ESP_OK) return SettingsEraseResult::Removed;
+    if (result == ESP_ERR_NVS_NOT_FOUND) return SettingsEraseResult::NotFound;
+    return SettingsEraseResult::Error;
 }
 
 void Settings::EraseAll() {

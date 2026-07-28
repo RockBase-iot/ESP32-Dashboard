@@ -1,0 +1,71 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  platformio:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Embedded build-only tests
+        run: |
+          pio test -e nm-display-420 -f test_display_page_state --without-uploading --without-testing
+          pio test -e nm-display-420 -f test_wake_coordinator --without-uploading --without-testing
+          pio test -e nm-display-420 -f test_legacy_config_migration --without-uploading --without-testing
+          pio test -e nm-display-420 -f test_source_runtime_cache --without-uploading --without-testing
+
+      - name: Firmware build
+        run: |
+          set -o pipefail
+          pio run -e nm-display-420 | tee firmware-build.log
+          {
+            echo "## Firmware build"
+            echo
+            echo '```text'
+            grep -E "RAM:|Flash:|Building in" firmware-build.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: LittleFS build
+        run: |
+          set -o pipefail
+          pio run -e nm-display-420 -t buildfs | tee littlefs-build.log
+          {
+            echo "## LittleFS build"
+            echo
+            echo '```text'
+            grep -E "Building FS image|LittleFS|Filesystem" littlefs-build.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release image
+        run: |
+          set -o pipefail
+          pio run -e nm-display-420 -t release_bin | tee release-image.log
+          {
+            echo "## Release image"
+            echo
+            echo '```text'
+            grep -E "Created 0x0 flash image|Wrote 0x" release-image.log || true
+            ls -lh release/*.bin
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-dashboard-release-images
+          path: release/*.bin
