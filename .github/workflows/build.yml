@@ -26,11 +26,13 @@ jobs:
           pio test -e nm-display-420 -f test_wake_coordinator --without-uploading --without-testing
           pio test -e nm-display-420 -f test_legacy_config_migration --without-uploading --without-testing
           pio test -e nm-display-420 -f test_source_runtime_cache --without-uploading --without-testing
+          pio test -e nm-epd-420-4c -f test_board_contract --without-uploading --without-testing
 
       - name: Firmware build
         run: |
           set -o pipefail
           pio run -e nm-display-420 | tee firmware-build.log
+          pio run -e nm-epd-420-4c | tee firmware-build-4c.log
           {
             echo "## Firmware build"
             echo
@@ -43,6 +45,7 @@ jobs:
         run: |
           set -o pipefail
           pio run -e nm-display-420 -t buildfs | tee littlefs-build.log
+          pio run -e nm-epd-420-4c -t buildfs | tee littlefs-build-4c.log
           {
             echo "## LittleFS build"
             echo

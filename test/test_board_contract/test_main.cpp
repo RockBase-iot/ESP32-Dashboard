@@ -1,0 +1,30 @@
+#include <unity.h>
+
+#include "bsp/nm_epd_420_4c/config.h"
+
+void test_nm_epd_420_4c_geometry_and_palette() {
+    TEST_ASSERT_EQUAL_UINT16(400, DISP_WIDTH);
+    TEST_ASSERT_EQUAL_UINT16(300, DISP_HEIGHT);
+    TEST_ASSERT_EQUAL_UINT8(4, EPD_COLOR_COUNT);
+    TEST_ASSERT_EQUAL_UINT32(30000, EPD_FRAME_BYTES);
+}
+
+void test_nm_epd_420_4c_official_pin_map() {
+    TEST_ASSERT_EQUAL_UINT8(2, PIN_EPD_SCK);
+    TEST_ASSERT_EQUAL_UINT8(1, PIN_EPD_MOSI);
+    TEST_ASSERT_EQUAL_UINT8(46, PIN_EPD_CS);
+    TEST_ASSERT_EQUAL_UINT8(4, PIN_EPD_DC);
+    TEST_ASSERT_EQUAL_UINT8(5, PIN_EPD_RST);
+    TEST_ASSERT_EQUAL_UINT8(6, PIN_EPD_BUSY);
+    TEST_ASSERT_EQUAL_UINT8(0, PIN_BOOT_BTN);
+    TEST_ASSERT_EQUAL_UINT8(45, PIN_USER_BTN);
+    TEST_ASSERT_EQUAL_UINT8(3, PIN_BATT_ADC);
+    TEST_ASSERT_EQUAL_UINT8(43, PIN_ADC_EN);
+}
+
+int main(int, char **) {
+    UNITY_BEGIN();
+    RUN_TEST(test_nm_epd_420_4c_geometry_and_palette);
+    RUN_TEST(test_nm_epd_420_4c_official_pin_map);
+    return UNITY_END();
+}

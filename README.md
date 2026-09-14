@@ -91,6 +91,7 @@ English | [简体中文](./README_cn.md)
 | Environment | MCU | Display | Resolution | Colors | Sensor | Notes |
 |---|---|---|---|---|---|---|
 | `nm-display-420` | ESP32-S3 | 4.2″ EPD (GDEY042Z98) | 400 × 300 | Red / Black / White | AHT20 | |
+| `nm-epd-420-4c` | ESP32-S3 | 4.2″ 4-color EPD (GDEY0420F51) | 400 × 300 | Red / Black / White / Yellow | AHT20 | Existing Dashboard pages; yellow palette is reserved for the later Home phase |
 | `dfrobot_firebeetle2_esp32e` / `firebeetle32` | ESP32 | 7.5″ EPD (GDEY075T7) | 800 × 480 | Black / White | BME280 | Planned — coming very soon, not yet tested |
 
 ---
@@ -142,7 +143,13 @@ Select the environment that matches your hardware:
 ```bash
 # NM Display 420 (ESP32-S3, 4.2" tri-color EPD)
 pio run -e nm-display-420 -t upload_all
+
+# NM-EPD-420-4C (ESP32-S3, 4.2" four-color EPD)
+pio run -e nm-epd-420-4c -t upload_all
 ```
+
+The 4C target runs the existing Dashboard pages with the same controls and
+power-management flow; its yellow pigment is reserved for the later Home UI.
 
 Use `upload_all` for normal device flashing. It builds and uploads the firmware,
 generates the gzipped web assets, then uploads the LittleFS filesystem image
