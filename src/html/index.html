@@ -87,6 +87,8 @@ h1 { font-size: 30px; line-height: 1.12; margin: 0 0 6px; letter-spacing: 0; }
 }
 .panel-head { padding: 14px 16px; border-bottom: 1px solid var(--rb-border); display: flex; justify-content: space-between; gap: 12px; align-items: center; }
 .panel-title { font-weight: 800; display: flex; gap: 9px; align-items: center; }
+.panel-actions { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.panel-actions .btn { min-height: 30px; padding: 5px 9px; font-size: 12px; }
 .panel-body { padding: 16px; }
 .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .stat { background: #111820b3; border: 1px solid var(--rb-border); border-radius: 7px; padding: 12px; }
@@ -192,7 +194,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--rb-primary); box
         <div class="panel-body stat-row" id="healthStats"></div>
       </div>
       <div class="panel span-12">
-        <div class="panel-head"><div class="panel-title">Display Order</div><div class="pill">Page 0 is fixed</div></div>
+        <div class="panel-head"><div class="panel-title">Display Order</div><div class="panel-actions"><button class="btn" onclick="setPageSelection('page-enabled', true)">Show All</button><button class="btn" onclick="setPageSelection('page-enabled', false)">Show None</button><button class="btn" onclick="setPageSelection('page-auto', true)">Rotate All</button><button class="btn" onclick="setPageSelection('page-auto', false)">Rotate None</button><div class="pill">Page 0 is fixed</div></div></div>
         <div class="table-wrap"><table><thead><tr><th>Page</th><th>Status</th><th>Show</th><th>Rotate</th><th>Order</th><th>Action</th></tr></thead><tbody id="pageRows"></tbody></table></div>
       </div>
       <div class="panel span-12">
@@ -578,6 +580,11 @@ function movePage(id, dir) {
   var tmp = pages[i]; pages[i] = pages[j]; pages[j] = tmp;
   pages.forEach(function(p, idx){ p.order = idx + 1; });
   renderPages();
+}
+function setPageSelection(className, checked) {
+  document.querySelectorAll('#pageRows input.' + className).forEach(function(input) {
+    input.checked = checked;
+  });
 }
 function savePages() {
   var enabled = [], auto = [], order = [];

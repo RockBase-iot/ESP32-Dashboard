@@ -9,16 +9,16 @@ static const char *TAG = "Weather";
 bool WeatherClass::fetchWeather(double lat, double lon) {
     // Build Open-Meteo request URL.
     // Fixed SI units; the UI layer converts to user-selected units.
-    char url[512];
+    char url[640];
     snprintf(url, sizeof(url),
         "http://" WEATHER_API_HOST "/v1/forecast"
         "?latitude=%.4f&longitude=%.4f"
         "&current=temperature_2m,apparent_temperature,relative_humidity_2m,"
                   "wind_speed_10m,wind_direction_10m,surface_pressure,"
-                  "weather_code,is_day,visibility"
-        "&hourly=temperature_2m,weather_code,precipitation_probability,relative_humidity_2m"
+                  "weather_code,is_day,visibility,cloud_cover,precipitation"
+        "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,relative_humidity_2m"
         "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max"
-        "&forecast_days=5&timezone=auto",
+        "&forecast_hours=24&forecast_days=5&timezone=auto",
         lat, lon);
 
     HTTPClient http;
@@ -67,7 +67,7 @@ bool WeatherClass::fetchAirQuality(double lat, double lon) {
     return ok;
 }
 
-bool WeatherClass::_parseWeatherResponse(const String &body) {
+bool parseWeatherResponseBody(const String &body, WeatherData &weather) {
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, body);
     if (err) {
@@ -77,20 +77,27 @@ bool WeatherClass::_parseWeatherResponse(const String &body) {
 
     // ── Current ──────────────────────────────────────────────────────────
     JsonObject cur = doc["current"];
-    _weather.current.temperature          = cur["temperature_2m"];
-    _weather.current.apparent_temperature = cur["apparent_temperature"];
-    _weather.current.humidity             = cur["relative_humidity_2m"];
-    _weather.current.wind_speed           = cur["wind_speed_10m"];
-    _weather.current.wind_direction       = cur["wind_direction_10m"];
-    _weather.current.pressure             = cur["surface_pressure"];
-    _weather.current.visibility           = cur["visibility"];
-    _weather.current.weather_code         = cur["weather_code"];
-    _weather.current.is_day               = (bool)cur["is_day"];
-    _weather.timezone  = doc["timezone"].as<String>();
-    _weather.elevation = doc["elevation"].as<float>();
+    weather.current.time                 = cur["time"].as<String>();
+    weather.current.temperature          = cur["temperature_2m"];
+    weather.current.apparent_temperature = cur["apparent_temperature"];
+    weather.current.humidity             = cur["relative_humidity_2m"];
+    weather.current.wind_speed           = cur["wind_speed_10m"];
+    weather.current.wind_direction       = cur["wind_direction_10m"];
+    weather.current.pressure             = cur["surface_pressure"];
+    weather.current.visibility           = cur["visibility"];
+    weather.current.cloud_cover = cur["cloud_cover"].isNull()
+                                      ? NAN
+                                      : cur["cloud_cover"].as<float>();
+    weather.current.precipitation = cur["precipitation"].isNull()
+                                        ? NAN
+                                        : cur["precipitation"].as<float>();
+    weather.current.weather_code         = cur["weather_code"];
+    weather.current.is_day               = (bool)cur["is_day"];
+    weather.timezone  = doc["timezone"].as<String>();
+    weather.elevation = doc["elevation"].as<float>();
 
     // ── Daily (5 days) ───────────────────────────────────────────────────
-    _weather.daily.clear();
+    weather.daily.clear();
     JsonObject daily     = doc["daily"];
     JsonArray  dTime     = daily["time"];
     JsonArray  dCode     = daily["weather_code"];
@@ -100,7 +107,7 @@ bool WeatherClass::_parseWeatherResponse(const String &body) {
     JsonArray  dSunset   = daily["sunset"];
     JsonArray  dUvIndex  = daily["uv_index_max"];
     size_t numDays = dTime.size();
-    _weather.daily.reserve(numDays);
+    weather.daily.reserve(numDays);
     for (size_t i = 0; i < numDays; ++i) {
         WeatherDaily d;
         d.date          = dTime[i].as<String>();
@@ -110,32 +117,36 @@ bool WeatherClass::_parseWeatherResponse(const String &body) {
         d.uv_index_max  = dUvIndex[i].as<float>();
         d.sunrise       = dSunrise[i].as<String>();
         d.sunset        = dSunset[i].as<String>();
-        _weather.daily.push_back(d);
+        weather.daily.push_back(d);
     }
 
     // ── Hourly (first 24 entries) ────────────────────────────────────────
-    _weather.hourly.clear();
+    weather.hourly.clear();
     JsonObject hourly = doc["hourly"];
     JsonArray  hTime  = hourly["time"];
     JsonArray  hTemp  = hourly["temperature_2m"];
     JsonArray  hCode  = hourly["weather_code"];
     JsonArray  hPrec  = hourly["precipitation_probability"];
+    JsonArray  hPrecipAmount = hourly["precipitation"];
     JsonArray  hHumi  = hourly["relative_humidity_2m"];
     size_t numHours = hTime.size();
     if (numHours > 24) numHours = 24;
-    _weather.hourly.reserve(numHours);
+    weather.hourly.reserve(numHours);
     for (size_t i = 0; i < numHours; ++i) {
         WeatherHourly h;
         h.time                     = hTime[i].as<String>();
         h.temperature              = hTemp[i].as<float>();
         h.weather_code             = hCode[i].as<int>();
         h.precipitation_probability = hPrec[i].as<int>();
+        h.precipitation = hPrecipAmount[i].isNull()
+                              ? NAN
+                              : hPrecipAmount[i].as<float>();
         h.humidity                 = hHumi[i].as<int>();
-        _weather.hourly.push_back(h);
+        weather.hourly.push_back(h);
     }
 
-    _weather.last_update_ms = millis();
-    _weather.valid = true;
+    weather.last_update_ms = millis();
+    weather.valid = true;
 
     // // ── Print summary ──────────────────────────────────────────────────────
     // const auto &c = _weather.current;
@@ -165,6 +176,10 @@ bool WeatherClass::_parseWeatherResponse(const String &body) {
     //           h.humidity, h.precipitation_probability, h.weather_code);
     // }
     return true;
+}
+
+bool WeatherClass::_parseWeatherResponse(const String &body) {
+    return parseWeatherResponseBody(body, _weather);
 }
 
 bool WeatherClass::_parseAqiResponse(const String &body) {

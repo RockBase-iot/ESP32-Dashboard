@@ -43,6 +43,20 @@ void test_weather_page_is_ready_when_location_is_configured() {
     TEST_ASSERT_TRUE(health.allEnabledPagesReady);
 }
 
+void test_home_weather_pages_share_weather_readiness() {
+    SourceConfigSummary sources;
+    const ConfigHealth health = buildConfigHealth(
+        baseConfig(), pages({PageId::HomeRhythm, PageId::HomeAtlas, PageId::HomePrint}), sources);
+
+    for (PageId page : {PageId::HomeRhythm, PageId::HomeAtlas, PageId::HomePrint}) {
+        const PageReadiness *readiness = findPageReadiness(health, page);
+        TEST_ASSERT_NOT_NULL(readiness);
+        TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageReadinessState::Ready),
+                                static_cast<uint8_t>(readiness->state));
+        TEST_ASSERT_EQUAL_STRING("weather", readiness->dependency.c_str());
+    }
+}
+
 void test_calendar_page_requires_calendar_source_when_enabled() {
     SourceConfigSummary sources;
     const ConfigHealth health = buildConfigHealth(
@@ -141,6 +155,7 @@ void test_focus_source_summary_carries_local_timer_configuration() {
 void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_weather_page_is_ready_when_location_is_configured);
+    RUN_TEST(test_home_weather_pages_share_weather_readiness);
     RUN_TEST(test_calendar_page_requires_calendar_source_when_enabled);
     RUN_TEST(test_calendar_page_becomes_ready_with_enabled_calendar_source);
     RUN_TEST(test_finance_pages_report_required_setup_from_source_counts);

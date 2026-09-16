@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-static constexpr size_t APP_CONFIG_PAGE_ORDER_MAX = 16;
+static constexpr size_t APP_CONFIG_PAGE_ORDER_MAX = 19;
 
 // AppConfig — flat struct holding all runtime configuration.
 //

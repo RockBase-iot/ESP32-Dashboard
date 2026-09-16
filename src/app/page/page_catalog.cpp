@@ -34,11 +34,24 @@ const std::vector<PageDescriptor> kCatalog = {
      {"history"}, false, false},
     {PageId::ImportantMilestones, "Important Milestones", PageCategory::Calendar, PagePriority::P2,
      {"calendar"}, false, true},
+#if defined(UI_LAYOUT_EPD_400x300)
+    {PageId::HomeRhythm, "Home Rhythm", PageCategory::Weather, PagePriority::P1,
+     {"weather"}, true, false},
+    {PageId::HomeAtlas, "Home Atlas", PageCategory::Weather, PagePriority::P1,
+     {"weather"}, true, false},
+    {PageId::HomePrint, "Home Print", PageCategory::Weather, PagePriority::P1,
+     {"weather"}, true, false},
+#endif
 };
 }  // namespace
 
 bool isValidPageId(PageId id) {
-    return static_cast<uint8_t>(id) < kPageCount;
+    for (const PageDescriptor &descriptor : kCatalog) {
+        if (descriptor.id == id) {
+            return true;
+        }
+    }
+    return false;
 }
 
 uint32_t pageMask(PageId id) {

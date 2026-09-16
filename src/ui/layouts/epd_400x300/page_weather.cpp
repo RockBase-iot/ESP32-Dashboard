@@ -27,6 +27,72 @@ static const uint16_t CLR_WHITE = 0xFFFF;
 
 enum Align { LEFT, CENTER, RIGHT };
 
+static void drawTransparentBlackBitmap(Adafruit_GFX *g, int16_t x, int16_t y,
+                                       const uint8_t *bitmap, uint8_t width,
+                                       uint8_t height) {
+    const uint8_t bytesPerRow = static_cast<uint8_t>((width + 7) / 8);
+    for (uint8_t row = 0; row < height; ++row) {
+        for (uint8_t column = 0; column < width; ++column) {
+            const uint8_t source = pgm_read_byte(bitmap + row * bytesPerRow + column / 8);
+            if ((source & (0x80 >> (column & 7))) == 0) {
+                g->drawPixel(static_cast<int16_t>(x + column), static_cast<int16_t>(y + row),
+                             CLR_BLACK);
+            }
+        }
+    }
+}
+
+static void drawYellowSun(Adafruit_GFX *g, int16_t x, int16_t y, uint8_t size,
+                          uint16_t yellow, bool partlyCloudy) {
+    const int16_t scale = size / 32;
+    const int16_t centerX = static_cast<int16_t>(x + 16 * scale);
+    const int16_t centerY = static_cast<int16_t>(y + 15 * scale);
+    const int16_t radius = 7 * scale;
+    const int16_t rayOffset = 11 * scale;
+    const int16_t rayLength = 4 * scale;
+    const int16_t rayWidth = std::max<int16_t>(1, scale);
+
+    g->fillCircle(centerX, centerY, radius, yellow);
+    g->fillRect(static_cast<int16_t>(centerX - rayWidth / 2),
+                static_cast<int16_t>(centerY - rayOffset - rayLength), rayWidth, rayLength,
+                yellow);
+    g->fillRect(static_cast<int16_t>(centerX - rayWidth / 2),
+                static_cast<int16_t>(centerY + rayOffset), rayWidth, rayLength, yellow);
+    g->fillRect(static_cast<int16_t>(centerX - rayOffset - rayLength),
+                static_cast<int16_t>(centerY - rayWidth / 2), rayLength, rayWidth, yellow);
+    g->fillRect(static_cast<int16_t>(centerX + rayOffset),
+                static_cast<int16_t>(centerY - rayWidth / 2), rayLength, rayWidth, yellow);
+
+    if (partlyCloudy) {
+        const int16_t cloudY = static_cast<int16_t>(y + 19 * scale);
+        g->fillCircle(static_cast<int16_t>(x + 11 * scale), cloudY, 5 * scale, CLR_WHITE);
+        g->fillCircle(static_cast<int16_t>(x + 19 * scale),
+                      static_cast<int16_t>(y + 18 * scale), 7 * scale, CLR_WHITE);
+        g->fillRoundRect(static_cast<int16_t>(x + 7 * scale), cloudY,
+                         20 * scale, 7 * scale, 3 * scale, CLR_WHITE);
+    }
+}
+
+static void drawDaytimeWeatherIcon(Adafruit_GFX *g, int16_t x, int16_t y,
+                                   const uint8_t *bitmap, uint8_t size,
+                                   bool sunny, bool partlyCloudy,
+                                   bool hasHighlight, uint16_t highlight) {
+    if (!hasHighlight || !sunny) {
+        g->drawBitmap(x, y, bitmap, size, size, CLR_WHITE, CLR_BLACK);
+        return;
+    }
+    drawYellowSun(g, x, y, size, highlight, partlyCloudy);
+    drawTransparentBlackBitmap(g, x, y, bitmap, size, size);
+}
+
+static bool wmoHasDaytimeSun(int code, bool day) {
+    return day && (code == 0 || code == 1 || code == 2);
+}
+
+static bool wmoForecastHasSun(int code) {
+    return code == 0 || code == 1 || code == 2;
+}
+
 // Return pixel width of the string with the currently selected font.
 static int16_t strW(Adafruit_GFX *g, const String &s) {
     int16_t x1, y1; uint16_t w, h;
@@ -166,7 +232,10 @@ void PageWeather400x300::_drawCurrentConditions() {
     const uint8_t *icon = (_weather && _weather->valid)
         ? wmo96(_weather->current.weather_code, _weather->current.is_day)
         : wi_day_sunny_96x96;  // placeholder
-    _gfx->drawBitmap(0, 0, icon, 96, 96, CLR_WHITE, CLR_BLACK);
+    const int weatherCode = (_weather && _weather->valid) ? _weather->current.weather_code : 0;
+    const bool isDay = !_weather || !_weather->valid || _weather->current.is_day;
+    drawDaytimeWeatherIcon(_gfx, 0, 0, icon, 96, wmoHasDaytimeSun(weatherCode, isDay),
+                           isDay && weatherCode == 2, _hasHighlight, _colorHighlight);
 
     // ── Temperature ──
     // Reference: display.setFont(&FONT_18pt8b);
@@ -440,7 +509,9 @@ void PageWeather400x300::_drawForecast() {
         const uint8_t *fc_icon = (i < numDays)
             ? wmo32(_weather->daily[i].weather_code)
             : wi_day_sunny_32x32;   // placeholder
-        _gfx->drawBitmap(x, 47, fc_icon, 32, 32, CLR_WHITE, CLR_BLACK);
+        const int weatherCode = i < numDays ? _weather->daily[i].weather_code : 0;
+        drawDaytimeWeatherIcon(_gfx, x, 47, fc_icon, 32, wmoForecastHasSun(weatherCode),
+                               weatherCode == 2, _hasHighlight, _colorHighlight);
 
         // ── Day-of-week label at y=42 ──
         char dayBuf[8] = {};

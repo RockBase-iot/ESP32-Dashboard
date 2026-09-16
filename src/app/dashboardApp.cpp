@@ -27,11 +27,13 @@
 #include "ui/layouts/epd_400x300/render_agenda.h"
 #include "ui/layouts/epd_400x300/render_calendar.h"
 #include "ui/layouts/epd_400x300/render_finance.h"
+#include "ui/layouts/epd_400x300/render_home_weather.h"
 #include "ui/layouts/epd_400x300/render_news.h"
 #include "ui/layouts/epd_400x300/render_overview.h"
 #include "ui/layouts/epd_400x300/render_time.h"
 #include "ui/layouts/epd_400x300/render_weather.h"
 #include "app/weather/weather_page_adapter.h"
+#include "app/weather/home_weather_snapshot.h"
 #endif
 #include "app/config/app_config.h"
 #include "app/memory/capacity_profile.h"
@@ -324,8 +326,11 @@ uint32_t dashboardContentHash(PageId page, const WeatherClass &weather,
     hash = fnv1aAdd(hash, batteryMv);
     hash = fnv1aAddString(hash, cfg.timeZoneId);
     hash = fnv1aAddString(hash, cfg.timeFormat);
+    const bool homeWeatherTheme = page == PageId::HomeRhythm ||
+                                  page == PageId::HomeAtlas ||
+                                  page == PageId::HomePrint;
     if (page == PageId::WeatherToday || page == PageId::WeeklyWeather ||
-        page == PageId::IndoorClimate) {
+        page == PageId::IndoorClimate || homeWeatherTheme) {
         const WeatherData &data = weather.weather();
         const AirQualityData &aqi = weather.airQuality();
         hash = fnv1aAddString(hash, cfg.city);
@@ -344,6 +349,19 @@ uint32_t dashboardContentHash(PageId page, const WeatherClass &weather,
         hash = fnv1aAdd(hash, aqi.valid ? 1 : 0);
         hash = fnv1aAdd(hash, static_cast<uint32_t>(aqi.us_aqi));
         hash = fnv1aAddString(hash, localIP);
+        if (homeWeatherTheme) {
+            hash = fnv1aAddString(hash, data.current.time);
+            hash = fnv1aAdd(hash, scaledFloatHash(data.current.cloud_cover, 1.0f));
+            hash = fnv1aAdd(hash, scaledFloatHash(data.current.precipitation, 100.0f));
+            hash = fnv1aAdd(hash, scaledFloatHash(data.current.wind_speed, 10.0f));
+            hash = fnv1aAdd(hash, data.current.is_day ? 1 : 0);
+            const size_t hourCount = std::min<size_t>(12, data.hourly.size());
+            for (size_t index = 0; index < hourCount; ++index) {
+                hash = fnv1aAddString(hash, data.hourly[index].time);
+                hash = fnv1aAdd(hash, scaledFloatHash(data.hourly[index].temperature, 10.0f));
+                hash = fnv1aAdd(hash, scaledFloatHash(data.hourly[index].precipitation, 100.0f));
+            }
+        }
     } else if (page == PageId::FocusClock) {
         hash = fnv1aAddString(hash, cfg.focusLabel);
         hash = fnv1aAdd(hash, cfg.focusMinutes);
@@ -1202,6 +1220,7 @@ void DashboardApp::_renderWeather(IBoard &board, WeatherClass &weather,
     PageWeather page;
     page.create(board.gfx(), board.dispWidth(), board.dispHeight(),
                 board.colorAccent(), board.hasAccentColor());
+    page.setHighlightColor(board.colorHighlight(), board.hasHighlightColor());
     page.setWeatherData(weather.weather(), weather.airQuality(), loc, cfg);
     page.setLocalIP(localIP);
 
@@ -1232,6 +1251,11 @@ void DashboardApp::_renderDashboardPage(IBoard &board, PageManager &pageManager,
     GfxSurface surface(board.gfx());
     const size_t pageNumber = pageManager.pageNumber(page);
     const size_t pageCount = pageManager.pageCount();
+    const HomeWeatherSnapshot homeWeatherSnapshot =
+        buildHomeWeatherSnapshot(weather.weather(), cfg);
+    const HomeWeatherPalette homeWeatherPalette{
+        board.colorWhite(), board.colorBlack(), board.colorAccent(),
+        board.colorHighlight(), board.hasHighlightColor()};
     board.epd().firstPage();
     do {
         switch (page) {
@@ -1309,6 +1333,18 @@ void DashboardApp::_renderDashboardPage(IBoard &board, PageManager &pageManager,
             case PageId::ImportantMilestones:
                 renderImportantMilestonesPage(surface, calendarSnapshot,
                                               pageNumber, pageCount, chrome.ipText, chrome);
+                break;
+            case PageId::HomeRhythm:
+                renderHomeRhythmPage(surface, homeWeatherSnapshot, homeWeatherPalette,
+                                     pageNumber, pageCount, chrome.ipText, chrome);
+                break;
+            case PageId::HomeAtlas:
+                renderHomeAtlasPage(surface, homeWeatherSnapshot, homeWeatherPalette,
+                                    pageNumber, pageCount, chrome.ipText, chrome);
+                break;
+            case PageId::HomePrint:
+                renderHomePrintPage(surface, homeWeatherSnapshot, homeWeatherPalette,
+                                    pageNumber, pageCount, chrome.ipText, chrome);
                 break;
             default:
                 break;

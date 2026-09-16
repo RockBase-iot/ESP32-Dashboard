@@ -204,7 +204,7 @@ void loadAppConfig(AppConfig &cfg) {
     cfg.indoorRoom = s.GetString(NVS_KEY_INDOOR_ROOM, DEFAULT_INDOOR_ROOM);
 
     PageSettings rawPageSettings = pageDefaults;
-    if (cfg.configVersion == kDashboardConfigVersion) {
+    if (cfg.configVersion == kDashboardConfigVersion || cfg.configVersion == 4) {
         rawPageSettings.configVersion = cfg.configVersion;
         rawPageSettings.enabledMask = cfg.pageEnabledMask;
         rawPageSettings.autoRotateMask = cfg.pageAutoRotateMask;
@@ -216,7 +216,7 @@ void loadAppConfig(AppConfig &cfg) {
         rawPageSettings.rotationIntervalMinutes = cfg.rotationIntervalMinutes;
     }
     rawPageSettings.timeZoneId = cfg.timeZoneId.c_str();
-    copyPageSettingsToConfig(cfg, sanitizePageSettings(rawPageSettings));
+    copyPageSettingsToConfig(cfg, migratePageSettings(cfg.configVersion, rawPageSettings));
 }
 
 void saveAppConfig(const AppConfig &cfg) {

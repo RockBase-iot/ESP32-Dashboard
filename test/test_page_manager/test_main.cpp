@@ -71,13 +71,54 @@ void test_default_pages_show_all_designed_pages_for_review() {
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::WeatherToday),
                             static_cast<uint8_t>(manager.current()));
     TEST_ASSERT_EQUAL_UINT(1, manager.pageNumber(PageId::WeatherToday));
-    TEST_ASSERT_EQUAL_UINT(kPageCount, manager.pageNumber(PageId::ImportantMilestones));
+    TEST_ASSERT_EQUAL_UINT(16, manager.pageNumber(PageId::ImportantMilestones));
+    TEST_ASSERT_EQUAL_UINT(17, manager.pageNumber(PageId::HomeRhythm));
+    TEST_ASSERT_EQUAL_UINT(18, manager.pageNumber(PageId::HomeAtlas));
+    TEST_ASSERT_EQUAL_UINT(19, manager.pageNumber(PageId::HomePrint));
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::WeatherToday),
                             static_cast<uint8_t>(queue[0]));
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::Overview),
                             static_cast<uint8_t>(queue[1]));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::ImportantMilestones),
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::HomePrint),
                             static_cast<uint8_t>(queue[kPageCount - 1]));
+}
+
+void test_home_weather_page_ids_are_appended_without_renumbering() {
+    TEST_ASSERT_EQUAL_UINT8(15, static_cast<uint8_t>(PageId::ImportantMilestones));
+    TEST_ASSERT_EQUAL_UINT8(16, static_cast<uint8_t>(PageId::HomeRhythm));
+    TEST_ASSERT_EQUAL_UINT8(17, static_cast<uint8_t>(PageId::HomeAtlas));
+    TEST_ASSERT_EQUAL_UINT8(18, static_cast<uint8_t>(PageId::HomePrint));
+    TEST_ASSERT_EQUAL_UINT(19, kPageCount);
+    TEST_ASSERT_EQUAL_UINT32(5, kDashboardConfigVersion);
+}
+
+void test_version_four_page_settings_preserve_existing_choices_and_append_home_pages() {
+    PageSettings stored = defaultPageSettings();
+    stored.configVersion = 4;
+    stored.enabledMask = pageMask(PageId::Overview) | pageMask(PageId::WeatherToday);
+    stored.autoRotateMask = pageMask(PageId::WeatherToday);
+    stored.orderCount = 2;
+    stored.order[0] = PageId::WeatherToday;
+    stored.order[1] = PageId::Overview;
+
+    const PageSettings migrated = migratePageSettings(4, stored);
+
+    TEST_ASSERT_EQUAL_UINT32(5, migrated.configVersion);
+    TEST_ASSERT_TRUE((migrated.enabledMask & pageMask(PageId::Overview)) != 0);
+    TEST_ASSERT_TRUE((migrated.enabledMask & pageMask(PageId::WeatherToday)) != 0);
+    TEST_ASSERT_TRUE((migrated.enabledMask & pageMask(PageId::HomeRhythm)) != 0);
+    TEST_ASSERT_TRUE((migrated.enabledMask & pageMask(PageId::HomeAtlas)) != 0);
+    TEST_ASSERT_TRUE((migrated.enabledMask & pageMask(PageId::HomePrint)) != 0);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::WeatherToday),
+                            static_cast<uint8_t>(migrated.order[0]));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::Overview),
+                            static_cast<uint8_t>(migrated.order[1]));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::HomeRhythm),
+                            static_cast<uint8_t>(migrated.order[migrated.orderCount - 3]));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::HomeAtlas),
+                            static_cast<uint8_t>(migrated.order[migrated.orderCount - 2]));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PageId::HomePrint),
+                            static_cast<uint8_t>(migrated.order[migrated.orderCount - 1]));
 }
 
 void test_default_manual_navigation_visits_every_designed_page_once() {
@@ -184,6 +225,8 @@ void setup() {
     RUN_TEST(test_disabled_pages_are_skipped);
     RUN_TEST(test_page_manager_reports_enabled_page_position);
     RUN_TEST(test_default_pages_show_all_designed_pages_for_review);
+    RUN_TEST(test_home_weather_page_ids_are_appended_without_renumbering);
+    RUN_TEST(test_version_four_page_settings_preserve_existing_choices_and_append_home_pages);
     RUN_TEST(test_default_manual_navigation_visits_every_designed_page_once);
     RUN_TEST(test_manual_navigation_does_not_move_auto_cursor);
     RUN_TEST(test_auto_rotation_queue_only_contains_selected_pages);

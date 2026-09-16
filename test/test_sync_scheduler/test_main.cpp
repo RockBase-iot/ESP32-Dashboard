@@ -80,6 +80,14 @@ void test_display_page_sync_requirements_match_visible_page() {
     TEST_ASSERT_FALSE(req.calendar);
     TEST_ASSERT_FALSE(req.finance);
     TEST_ASSERT_TRUE(req.news);
+
+    for (PageId page : {PageId::HomeRhythm, PageId::HomeAtlas, PageId::HomePrint}) {
+        req = syncRequirementsForDisplayPage(false, page);
+        TEST_ASSERT_TRUE(req.weather);
+        TEST_ASSERT_FALSE(req.calendar);
+        TEST_ASSERT_FALSE(req.finance);
+        TEST_ASSERT_FALSE(req.news);
+    }
 }
 
 void test_missing_sync_requirements_detects_calendar_after_weather_home() {

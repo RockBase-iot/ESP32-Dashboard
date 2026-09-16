@@ -22,6 +22,9 @@ enum class PageId : uint8_t {
     Headlines,
     TodayInHistory,
     ImportantMilestones,
+    HomeRhythm,
+    HomeAtlas,
+    HomePrint,
 };
 
 enum class PageCategory : uint8_t {
@@ -49,8 +52,8 @@ struct PageDescriptor {
     bool officeDefault;
 };
 
-constexpr uint8_t kPageCount = 16;
-constexpr uint32_t kDashboardConfigVersion = 4;
+constexpr uint8_t kPageCount = 19;
+constexpr uint32_t kDashboardConfigVersion = 5;
 
 bool isValidPageId(PageId id);
 uint32_t pageMask(PageId id);

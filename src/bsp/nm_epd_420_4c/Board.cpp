@@ -94,6 +94,8 @@ public:
     uint16_t colorWhite() const override { return GxEPD_WHITE; }
     uint16_t colorAccent() const override { return GxEPD_RED; }
     bool hasAccentColor() const override { return true; }
+    uint16_t colorHighlight() const override { return GxEPD_YELLOW; }
+    bool hasHighlightColor() const override { return true; }
     ISensor *getTempSensor() override { return &sensor; }
 
     uint32_t readBatteryMv() override {

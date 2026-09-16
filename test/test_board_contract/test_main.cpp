@@ -1,6 +1,13 @@
 #include <unity.h>
 
+#include <type_traits>
+#include <utility>
+
+#include "bsp/IBoard.h"
 #include "bsp/nm_epd_420_4c/config.h"
+
+static_assert(std::is_same_v<decltype(std::declval<const IBoard &>().colorHighlight()), uint16_t>);
+static_assert(std::is_same_v<decltype(std::declval<const IBoard &>().hasHighlightColor()), bool>);
 
 void test_nm_epd_420_4c_geometry_and_palette() {
     TEST_ASSERT_EQUAL_UINT16(400, DISP_WIDTH);
@@ -22,9 +29,11 @@ void test_nm_epd_420_4c_official_pin_map() {
     TEST_ASSERT_EQUAL_UINT8(43, PIN_ADC_EN);
 }
 
-int main(int, char **) {
+void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_nm_epd_420_4c_geometry_and_palette);
     RUN_TEST(test_nm_epd_420_4c_official_pin_map);
-    return UNITY_END();
+    UNITY_END();
 }
+
+void loop() {}

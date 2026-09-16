@@ -2,6 +2,8 @@
 
 #include "weather_data.h"
 
+bool parseWeatherResponseBody(const String &body, WeatherData &weather);
+
 // WeatherClass — fetches and parses Open-Meteo weather and AQI data.
 //
 // Call fetchWeather() and fetchAirQuality() once per wake cycle, then read

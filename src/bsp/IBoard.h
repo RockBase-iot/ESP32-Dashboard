@@ -51,6 +51,11 @@ public:
     virtual uint16_t colorAccent()    const = 0;
     virtual bool     hasAccentColor() const = 0;
 
+    // Optional second chromatic pigment. Four-color panels expose yellow;
+    // three-color and black/white panels report no highlight pigment.
+    virtual uint16_t colorHighlight()    const = 0;
+    virtual bool     hasHighlightColor() const = 0;
+
     // Optional temperature/humidity sensor; returns nullptr if not present.
     virtual ISensor *getTempSensor() = 0;
 

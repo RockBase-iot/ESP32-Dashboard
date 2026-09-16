@@ -38,6 +38,7 @@ bool isValidRotationIntervalMinutes(uint16_t minutes);
 std::string timeZoneIdForUtcOffset(int utcOffsetHours);
 PageSettings defaultPageSettings();
 PageSettings sanitizePageSettings(const PageSettings &settings);
+PageSettings migratePageSettings(uint32_t storedVersion, const PageSettings &storedSettings);
 
 class PageManager {
 public:
