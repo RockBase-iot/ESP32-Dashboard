@@ -6,6 +6,7 @@
 #include <esp_sleep.h>
 
 #include "bsp/IBoard.h"
+#include "bsp/battery_adc.h"
 #include "config.h"
 
 // ─── EPD display object ────────────────────────────────────────────────────
@@ -32,20 +33,54 @@ public:
 };
 
 // ─── BME280 sensor adapter ────────────────────────────────────────────────
+// The sensor is only powered while a reading is being taken: begin() raises the
+// (optional) power pin and starts the I2C bus, read() samples, and end() drops
+// the power pin and releases the bus again.
 class Bme280Sensor final : public ISensor {
 public:
+    // Set to -1 if the sensor rail is hard-wired to 3.3 V and cannot be gated.
+    static constexpr int kPowerPin = PIN_BME_PWR;
+
     bool begin() override {
+        if (_active) {
+            return true; // already powered on
+        }
+        if (kPowerPin >= 0) {
+            pinMode(kPowerPin, OUTPUT);
+            digitalWrite(kPowerPin, HIGH);
+            delay(10); // let the sensor rail settle
+        }
         Wire.begin(PIN_BME_SDA, PIN_BME_SCL);
-        return _bme.begin();
+        if (!_bme.begin()) {
+            end(); // failed to come up — do not leave it powered
+            return false;
+        }
+        _active = true;
+        return true;
     }
+
     bool read(float &temp_c, float &humidity, float &pressure_hpa) override {
+        if (!_active) {
+            return false; // not powered — caller must begin() first
+        }
         temp_c       = _bme.readTemperature();
         humidity     = _bme.readHumidity();
         pressure_hpa = _bme.readPressure() / 100.0f;
         return true;
     }
+
+    void end() override {
+        Wire.end(); // release I2C peripheral from SDA/SCL
+        if (kPowerPin >= 0) {
+            pinMode(kPowerPin, OUTPUT);
+            digitalWrite(kPowerPin, LOW); // cut sensor power
+        }
+        _active = false;
+    }
+
     const char *typeName() const override { return "BME280"; }
 private:
+    bool            _active = false;
     Adafruit_BME280 _bme;
 };
 
@@ -70,15 +105,21 @@ public:
     bool          hasHighlightColor() const override { return false; }
     ISensor      *getTempSensor()   override { return &_sensor; }
 
+    void shutdownSensors() override { _sensor.end(); }
+
     uint32_t readBatteryMv() override {
-        // 100 kΩ + 100 kΩ voltage divider; 12-bit ADC, 3.3 V reference.
-        uint32_t raw = analogRead(PIN_BAT_ADC);
-        return static_cast<uint32_t>(raw * 3300UL * 2 / 4095);
+        // 100 kΩ + 100 kΩ voltage divider; 12-bit ADC, 11 dB attenuation.
+        // No enable pin — the divider is always connected.
+        batteryAdcConfigure(PIN_BAT_ADC);
+        delay(BATT_ADC_SETTLE_MS);
+        const uint32_t adcMv = batteryAdcAverageMilliVolts(PIN_BAT_ADC);
+        return batteryAdcToBatteryMv(adcMv, BATT_ADC_DIV);
     }
 
     void prepareForSleep() override {
         pinMode(PIN_EPD_PWR, OUTPUT);
         digitalWrite(PIN_EPD_PWR, LOW);
+        _sensor.end(); // make sure the BME280 rail is off before sleeping
     }
 
     void deepSleep(uint64_t microseconds) override {

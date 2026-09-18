@@ -27,49 +27,72 @@ static const uint16_t CLR_WHITE = 0xFFFF;
 
 enum Align { LEFT, CENTER, RIGHT };
 
-static void drawTransparentBlackBitmap(Adafruit_GFX *g, int16_t x, int16_t y,
-                                       const uint8_t *bitmap, uint8_t width,
-                                       uint8_t height) {
-    const uint8_t bytesPerRow = static_cast<uint8_t>((width + 7) / 8);
-    for (uint8_t row = 0; row < height; ++row) {
-        for (uint8_t column = 0; column < width; ++column) {
-            const uint8_t source = pgm_read_byte(bitmap + row * bytesPerRow + column / 8);
-            if ((source & (0x80 >> (column & 7))) == 0) {
-                g->drawPixel(static_cast<int16_t>(x + column), static_cast<int16_t>(y + row),
-                             CLR_BLACK);
-            }
-        }
-    }
+// Paint the weather glyph two-tone, with the "highlight" pigment applied to
+// the artwork's paper (bit == 0) pixels.
+//
+// Artwork polarity — do not "fix" this without re-measuring. These icons are
+// ink-filled tiles, not outline glyphs: wi_day_sunny_96x96 is 8264 ink pixels
+// to 952 paper, and *no* paper pixel lies on the glyph border. Viewed through
+// Adafruit_GFX::drawBitmap (which paints `color` where the bit is set), the
+// ink becomes the tile and the paper becomes the sun: a disc with ring and
+// rays, cut cleanly out of the tile.
+//
+// So the correct tint set is simply "every paper pixel". The previous
+// implementation (drawYellowSun) instead drew an independent yellow disc and
+// rays underneath the bitmap; because the two were derived from different
+// geometry they could never line up, and the tile's ring strokes sliced
+// through the oversize yellow disc — producing a yellow blob with black
+// crescents bitten out of it (measured: 896 px of yellow, most of it colliding
+// with the drawn artwork).
+//
+// An earlier revision of this routine used a flood fill to tint only paper
+// regions *enclosed* by ink. That is correct for an outline glyph but does
+// nothing here: with zero paper on the border nothing is unreachable, so the
+// fill painted no pixels at all (verified against a BFS reference — the tint
+// set came out empty). Tinting paper directly is both simpler and correct.
+//
+// When the highlight pigment is unavailable (monochrome panel or the icon is
+// larger than the scratch array), fall back to a plain two-tone stamp.
+static constexpr uint16_t SUN_ICON_MAX_DIM = 96;
+
+// Decoded paper mask for the largest glyph, 1 byte per pixel.
+static uint8_t s_iconPaper[SUN_ICON_MAX_DIM * SUN_ICON_MAX_DIM];
+
+// Bit value (1 = transparent / paper) of glyph pixel (r, c).
+static inline bool glyphPixelTransparent(const uint8_t *bitmap, uint8_t bytesPerRow,
+                                         uint8_t r, uint8_t c) {
+    return (pgm_read_byte(bitmap + static_cast<uint16_t>(r) * bytesPerRow +
+                          static_cast<uint16_t>(c >> 3)) &
+            static_cast<uint8_t>(0x80 >> (c & 7))) != 0;
 }
 
-static void drawYellowSun(Adafruit_GFX *g, int16_t x, int16_t y, uint8_t size,
-                          uint16_t yellow, bool partlyCloudy) {
-    const int16_t scale = size / 32;
-    const int16_t centerX = static_cast<int16_t>(x + 16 * scale);
-    const int16_t centerY = static_cast<int16_t>(y + 15 * scale);
-    const int16_t radius = 7 * scale;
-    const int16_t rayOffset = 11 * scale;
-    const int16_t rayLength = 4 * scale;
-    const int16_t rayWidth = std::max<int16_t>(1, scale);
+// Stamp `bitmap` at (x, y): ink -> black, paper -> `highlight` (or black on
+// the mono path, where the caller passes CLR_BLACK for both).
+static void drawHighlightedWeatherIcon(Adafruit_GFX *g, int16_t x, int16_t y,
+                                       const uint8_t *bitmap, uint8_t size,
+                                       uint16_t highlight) {
+    const uint8_t bytesPerRow = static_cast<uint8_t>((size + 7) / 8);
 
-    g->fillCircle(centerX, centerY, radius, yellow);
-    g->fillRect(static_cast<int16_t>(centerX - rayWidth / 2),
-                static_cast<int16_t>(centerY - rayOffset - rayLength), rayWidth, rayLength,
-                yellow);
-    g->fillRect(static_cast<int16_t>(centerX - rayWidth / 2),
-                static_cast<int16_t>(centerY + rayOffset), rayWidth, rayLength, yellow);
-    g->fillRect(static_cast<int16_t>(centerX - rayOffset - rayLength),
-                static_cast<int16_t>(centerY - rayWidth / 2), rayLength, rayWidth, yellow);
-    g->fillRect(static_cast<int16_t>(centerX + rayOffset),
-                static_cast<int16_t>(centerY - rayWidth / 2), rayLength, rayWidth, yellow);
+    // Decode once: a byte-per-pixel mask avoids re-reading and re-shifting the
+    // 1-bit source for every pixel of the inner drawing loops.
+    for (uint8_t r = 0; r < size; ++r) {
+        for (uint8_t c = 0; c < size; ++c) {
+            s_iconPaper[static_cast<uint16_t>(r) * size + c] =
+                glyphPixelTransparent(bitmap, bytesPerRow, r, c) ? 1 : 0;
+        }
+    }
 
-    if (partlyCloudy) {
-        const int16_t cloudY = static_cast<int16_t>(y + 19 * scale);
-        g->fillCircle(static_cast<int16_t>(x + 11 * scale), cloudY, 5 * scale, CLR_WHITE);
-        g->fillCircle(static_cast<int16_t>(x + 19 * scale),
-                      static_cast<int16_t>(y + 18 * scale), 7 * scale, CLR_WHITE);
-        g->fillRoundRect(static_cast<int16_t>(x + 7 * scale), cloudY,
-                         20 * scale, 7 * scale, 3 * scale, CLR_WHITE);
+    for (uint8_t r = 0; r < size; ++r) {
+        for (uint8_t c = 0; c < size; ++c) {
+            const bool paper = s_iconPaper[static_cast<uint16_t>(r) * size + c] != 0;
+            if (!paper) {
+                g->drawPixel(static_cast<int16_t>(x + c),
+                             static_cast<int16_t>(y + r), CLR_BLACK);
+            } else {
+                g->drawPixel(static_cast<int16_t>(x + c),
+                             static_cast<int16_t>(y + r), highlight);
+            }
+        }
     }
 }
 
@@ -77,12 +100,16 @@ static void drawDaytimeWeatherIcon(Adafruit_GFX *g, int16_t x, int16_t y,
                                    const uint8_t *bitmap, uint8_t size,
                                    bool sunny, bool partlyCloudy,
                                    bool hasHighlight, uint16_t highlight) {
-    if (!hasHighlight || !sunny) {
+    (void)partlyCloudy; // the artwork already carries its own cloud shape
+    (void)sunny;
+
+    if (!hasHighlight || size > SUN_ICON_MAX_DIM) {
+        // No highlight pigment on this panel, or the glyph exceeds the scratch
+        // array: plain two-tone stamp (ink -> white tile, paper -> black art).
         g->drawBitmap(x, y, bitmap, size, size, CLR_WHITE, CLR_BLACK);
         return;
     }
-    drawYellowSun(g, x, y, size, highlight, partlyCloudy);
-    drawTransparentBlackBitmap(g, x, y, bitmap, size, size);
+    drawHighlightedWeatherIcon(g, x, y, bitmap, size, highlight);
 }
 
 static bool wmoHasDaytimeSun(int code, bool day) {

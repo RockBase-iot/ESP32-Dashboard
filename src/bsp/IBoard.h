@@ -57,9 +57,25 @@ public:
     virtual bool     hasHighlightColor() const = 0;
 
     // Optional temperature/humidity sensor; returns nullptr if not present.
+    // The returned sensor is initially powered DOWN — callers must begin() it
+    // before reading and end() it immediately afterwards.
     virtual ISensor *getTempSensor() = 0;
 
+    // Power down every board-controlled peripheral that is not needed for
+    // rendering: sensors, radios, codecs, amplifiers. Idempotent, and safe to
+    // call at any point. Callers use this to guarantee a known-off state before
+    // entering any sleep mode or before abandoning a wake cycle into AP mode.
+    virtual void shutdownSensors() = 0;
+
     // Battery voltage in millivolts (0 if not measurable).
+    //
+    // Contract for implementations: the battery divider network must be gated
+    // by its own enable pin, powered up only for the duration of the sampling
+    // burst and powered down again before returning. The ADC must be
+    // explicitly configured (12-bit resolution, ADC_11db attenuation) rather
+    // than relying on library defaults — the ESP32-S3 default attenuation
+    // (~6 dB, ~1750 mV full scale) saturates a 1:1-divided Li-ion cell from
+    // about 3.5 V upward and makes the reading useless.
     virtual uint32_t readBatteryMv() = 0;
 
     // Shut down board-controlled rails/peripherals before any sleep mode.

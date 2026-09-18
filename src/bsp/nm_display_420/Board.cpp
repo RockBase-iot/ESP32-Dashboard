@@ -8,6 +8,7 @@
 #include <soc/gpio_struct.h>
 
 #include "bsp/IBoard.h"
+#include "bsp/battery_adc.h"
 #include "config.h"
 #include "utils/logger.h"
 
@@ -88,7 +89,10 @@ public:
         pinMode(PIN_ADC_EN,   OUTPUT); digitalWrite(PIN_ADC_EN,   LOW);  // ADC off
 
         // Legacy control pins — idle/off states.
-        pinMode(PIN_PA_CTRL,  OUTPUT); digitalWrite(PIN_PA_CTRL,  HIGH); // PA enabled (audio idle)
+        // Audio is not implemented in this application, so the power amplifier
+        // stays disabled for the whole wake cycle. Driving it HIGH here would
+        // burn current from boot until prepareForSleep() ran.
+        pinMode(PIN_PA_CTRL,  OUTPUT); digitalWrite(PIN_PA_CTRL,  LOW);  // PA off
         pinMode(PIN_LORA_NSS,  INPUT); // LoRa SPI chip-select high-Z while module is powered off
         pinMode(PIN_LORA_SCK,  INPUT); // LoRa SPI clock high-Z while module is powered off
         pinMode(PIN_LORA_MOSI, INPUT); // LoRa SPI MOSI high-Z while module is powered off
@@ -96,7 +100,8 @@ public:
         pinMode(PIN_LORA_RST,  INPUT); // LoRa reset high-Z while module is powered off
         pinMode(PIN_LORA_BUSY, INPUT); // LoRa BUSY high-Z while module is powered off
         pinMode(PIN_LORA_DIO1, INPUT); // LoRa DIO1 high-Z while module is powered off
-        // PIN_TEMP_CTL is driven HIGH by Aht20Sensor::begin() when the sensor is used.
+        // PIN_TEMP_CTL (AHT20 power) stays LOW here. Aht20Sensor::begin() raises
+        // it only for the duration of a reading, and end() drops it again.
     }
 
     IEpdDriver   &epd()          override { return _epd; }
@@ -111,15 +116,19 @@ public:
     bool          hasHighlightColor() const override { return false; }
     ISensor      *getTempSensor()   override { return &_sensor; }
 
+    void shutdownSensors() override { _sensor.end(); }
+
     uint32_t readBatteryMv() override {
-        // rev2: gated resistor-divider network; enable ADC circuit, sample, then disable.
+        // rev2: gated resistor-divider network — enable the ADC circuit, let it
+        // settle, configure the ADC, average a burst, then disable the divider.
+        // See bsp/battery_adc.h for why 11 dB attenuation is mandatory.
         pinMode(PIN_ADC_EN, OUTPUT);
         digitalWrite(PIN_ADC_EN, HIGH);
-        delay(5); // allow divider network to settle
-        uint32_t raw = analogRead(PIN_BATT_ADC); // IO3, ADC1_CH2
+        delay(BATT_ADC_SETTLE_MS); // let the divider network settle
+        batteryAdcConfigure(PIN_BATT_ADC); // IO3, ADC1_CH2 — attach, then 11 dB
+        const uint32_t adcMv = batteryAdcAverageMilliVolts(PIN_BATT_ADC);
         digitalWrite(PIN_ADC_EN, LOW);
-        // 12-bit ADC, 3.3 V reference, apply divider ratio.
-        return static_cast<uint32_t>(raw * 3300UL * BATT_ADC_DIV / 4095);
+        return batteryAdcToBatteryMv(adcMv, BATT_ADC_DIV);
     }
 
     void prepareForSleep() override {

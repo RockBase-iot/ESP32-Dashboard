@@ -41,6 +41,10 @@
 #define NVS_KEY_FOCUS_SESSIONS   "FocusCycles"
 #define NVS_KEY_INDOOR_ENABLED   "IndoorEn"
 #define NVS_KEY_INDOOR_ROOM      "IndoorRoom"
+// One-shot marker: set once the indoor sensor has been defaulted to enabled.
+// Lets the migration in app_config.cpp flip a previously-persisted "false"
+// exactly once, without overriding a user's later explicit choice.
+#define NVS_KEY_INDOOR_DEFAULTED "IndDoorMig"
 
 // ─── Default values (used when NVS key is absent) ─────────────────────────
 // Open-Meteo is fully free and requires no API key.
@@ -74,5 +78,9 @@
 #define DEFAULT_FOCUS_MINUTES    25
 #define DEFAULT_FOCUS_BREAK_MIN  5
 #define DEFAULT_FOCUS_SESSIONS   4
-#define DEFAULT_INDOOR_ENABLED   false
+// Indoor Climate is enabled by default: the sensor is only powered while a
+// reading is actually taken (see DashboardApp::_readIndoorSensor), so an
+// unpopulated sensor costs one short failed probe instead of a permanent
+// drain. Devices that never had a sensor are expected to turn this off.
+#define DEFAULT_INDOOR_ENABLED   true
 #define DEFAULT_INDOOR_ROOM      "Indoor"

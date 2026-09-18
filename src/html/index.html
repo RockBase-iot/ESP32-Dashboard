@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--rb-primary); box
               <li>News has default RSS/Atom feeds: BBC, Hacker News, and NASA. Stock Watchlist defaults to Stooq CSV symbols such as AAPL.US, MSFT.US, and BTCUSD.</li>
               <li>Economic Calendar requires a real RSS or ICS feed URL. Portfolio positions are user-owned sensitive data and are not echoed back by GET APIs.</li>
               <li>World Clock and Focus Clock need no network source. Configure up to four city rows; empty rows are skipped.</li>
-              <li>Indoor Climate reads local sensor data when enabled. Leave disabled if the device has no sensor attached.</li>
+              <li>Indoor Climate is on by default. The sensor powers up only for the moment a reading is taken, so a device without one simply skips the reading. Turn it off to avoid even the probe.</li>
             </ul>
           </div>
           <div class="guide-card">
@@ -237,7 +237,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--rb-primary); box
               <li>新闻默认使用 BBC、Hacker News、NASA 的 RSS/Atom；股票默认使用 Stooq CSV，例如 AAPL.US、MSFT.US、BTCUSD。</li>
               <li>经济日历需要真实 RSS 或 ICS Feed URL。投资组合是用户敏感数据，不会通过 GET 接口回显明文。</li>
               <li>世界时钟和专注时钟不依赖外部数据源。最多配置四个城市行，空行不会显示。</li>
-              <li>室内环境依赖本地传感器；没有接入传感器时保持关闭即可。</li>
+              <li>室内环境默认启用。传感器只在读取数据时上电、读完立即断电，因此没有传感器时只是跳过本次读取。若确定无传感器，可关闭以免除探测开销。</li>
             </ul>
           </div>
         </div>
@@ -319,7 +319,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--rb-primary); box
       </div>
       <div class="panel span-6 source-card" data-source-card="indoor">
         <div class="panel-head"><div class="panel-title">Indoor Climate</div></div>
-        <div class="panel-body form-grid"><label>Sensor source</label><select id="i_enabled"><option value="false">Disabled</option><option value="true">Enabled</option></select><div class="field-note">Default disabled / 默认关闭；启用后读取本地传感器。</div><label>Room</label><input id="i_room" placeholder="Office"><div class="field-note">Optional display label / 可选房间名称。</div><div></div><button class="btn primary" onclick="saveSource('indoor')">Save Indoor</button></div>
+        <div class="panel-body form-grid"><label>Sensor source</label><select id="i_enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select><div class="field-note">Default enabled / 默认启用。传感器仅在读取时上电，读取后立即断电，因此无传感器时开销很小。若本机确定没有室内传感器，可设为 Disabled 以跳过探测。</div><label>Room</label><input id="i_room" placeholder="Office"><div class="field-note">Optional display label / 可选房间名称。</div><div></div><button class="btn primary" onclick="saveSource('indoor')">Save Indoor</button></div>
       </div>
       <div class="panel span-12"><div class="panel-head"><div class="panel-title">Save / Sync Result</div></div><div class="panel-body"><div class="result" id="sourceResult">No result yet.</div></div></div>
     </div>

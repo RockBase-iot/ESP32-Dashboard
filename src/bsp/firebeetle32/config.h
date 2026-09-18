@@ -11,7 +11,10 @@ static constexpr uint16_t DISP_HEIGHT = 480;
 // ─── Pinout ───────────────────────────────────────────────────────────────
 
 // ADC pin used to measure battery voltage.
+// Unlike the NM boards this input is not gated by an enable pin: the FireBeetle
+// divider is permanently connected, so there is nothing to power up or down.
 static constexpr uint8_t PIN_BAT_ADC  = A0;
+static constexpr uint8_t BATT_ADC_DIV = 2;   // Divider ratio: ADC_mV × BATT_ADC_DIV = battery mV
 
 // SPI pins for E-Paper Driver Board.
 static constexpr uint8_t PIN_EPD_BUSY =  5;

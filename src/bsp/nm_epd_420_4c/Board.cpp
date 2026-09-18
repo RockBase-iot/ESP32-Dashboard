@@ -7,6 +7,7 @@
 #include <soc/gpio_struct.h>
 
 #include "bsp/IBoard.h"
+#include "bsp/battery_adc.h"
 #include "drivers/sensor/aht20/Aht20Sensor.h"
 #include "config.h"
 #include "utils/logger.h"
@@ -69,7 +70,10 @@ public:
         setOutput(PIN_LORA_EN, LOW);
         setOutput(PIN_CODEC_EN, LOW);
         setOutput(PIN_ADC_EN, LOW);
-        setOutput(PIN_PA_CTRL, HIGH);
+        // Audio is not implemented in this application, so the power amplifier
+        // stays disabled for the whole wake cycle. Driving it HIGH here would
+        // burn current from boot until prepareForSleep() ran.
+        setOutput(PIN_PA_CTRL, LOW);
         setOutput(PIN_TEMP_CTL, LOW);
 
         const uint8_t hiZPins[] = {
@@ -98,12 +102,18 @@ public:
     bool hasHighlightColor() const override { return true; }
     ISensor *getTempSensor() override { return &sensor; }
 
+    void shutdownSensors() override { sensor.end(); }
+
     uint32_t readBatteryMv() override {
+        // Enable the gated divider, let it settle, configure the ADC, average
+        // a burst of readings, then cut the divider again. See battery_adc.h
+        // for why the attenuation must be set explicitly.
         setOutput(PIN_ADC_EN, HIGH);
-        delay(5);
-        const uint32_t raw = analogRead(PIN_BATT_ADC);
+        delay(BATT_ADC_SETTLE_MS);
+        batteryAdcConfigure(PIN_BATT_ADC);
+        const uint32_t adcMv = batteryAdcAverageMilliVolts(PIN_BATT_ADC);
         setOutput(PIN_ADC_EN, LOW);
-        return raw * 3300UL * BATT_ADC_DIV / 4095UL;
+        return batteryAdcToBatteryMv(adcMv, BATT_ADC_DIV);
     }
 
     void prepareForSleep() override {

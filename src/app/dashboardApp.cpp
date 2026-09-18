@@ -423,14 +423,35 @@ FocusClockConfig focusClockConfigFromAppConfig(const AppConfig &cfg) {
     return normalizeFocusClockConfig(focus);
 }
 
+// Battery gauge calibration.
+//
+// Empty and full terminal voltages for a 1S Li-ion cell. BATT_MAX_MV is the
+// charger's constant-voltage setpoint, so a fully charged pack lands on 100%.
+// Do NOT widen this to 4500 mV even though the official NM-EPD-420 config.h
+// uses 2500..4500 — that range assumes a wider hardware tolerance and leaves a
+// healthy 4.2 V cell reading ~85%, which is what we were seeing.
+static constexpr uint32_t BATT_EMPTY_MV = 3300;
+static constexpr uint32_t BATT_FULL_MV  = 4200;
+
+// A 1 mV hysteresis band under BATT_FULL_MV.
+//
+// The ADC path rounds twice (cell mV -> divider mV -> integer code -> mV), and
+// the two roundings do not cancel: a genuine 4200 mV cell converts to a
+// reported 4199 mV. Without a band that reads 99%, so a fully charged pack
+// would never show 100% — exactly the bug being fixed here. Treating the top
+// 1 mV as full absorbs the rounding residue without meaningfully shifting the
+// gauge curve.
+static constexpr uint32_t BATT_FULL_TOLERANCE_MV = 1;
+
 int batteryPercentFromMv(uint32_t batteryMv) {
-    if (batteryMv <= 3300U) {
+    if (batteryMv <= BATT_EMPTY_MV) {
         return 0;
     }
-    if (batteryMv >= 4200U) {
+    if (batteryMv + BATT_FULL_TOLERANCE_MV >= BATT_FULL_MV) {
         return 100;
     }
-    return static_cast<int>((batteryMv - 3300U) * 100U / 900U);
+    return static_cast<int>((batteryMv - BATT_EMPTY_MV) * 100U /
+                            (BATT_FULL_MV - BATT_EMPTY_MV));
 }
 
 calm_grid::ChromeContext buildChromeContext(const AppConfig &cfg, int64_t nowUtc,
@@ -1080,11 +1101,13 @@ void DashboardApp::_initHardware(IBoard &board, bool coldBoot) {
     board.epd().init(/*initialPowerOn=*/coldBoot);
     log_i(TAG, "EPD init done (%dx%d)", board.dispWidth(), board.dispHeight());
 
-    if (board.getTempSensor()) {
-        bool ok = board.getTempSensor()->begin();
-        log_i(TAG, "Sensor %s init: %s", board.getTempSensor()->typeName(),
-              ok ? "OK" : "FAILED");
-    }
+    // NOTE: on-board sensors are deliberately NOT initialized here. An AHT20/BME280
+    // draws hundreds of microamps while powered, which is a large fraction of the
+    // sub-milliamp deep-sleep budget, and most pages never consume indoor data.
+    // Sensors are opened on demand by _readIndoorSensor() and closed immediately
+    // after the reading is taken. The sensor must also be already off when this
+    // function returns false or the wake cycle aborts into AP mode.
+    board.shutdownSensors();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1224,19 +1247,58 @@ void DashboardApp::_renderWeather(IBoard &board, WeatherClass &weather,
     page.setWeatherData(weather.weather(), weather.airQuality(), loc, cfg);
     page.setLocalIP(localIP);
 
-    if (board.getTempSensor()) {
-        float indoorTemp = NAN, indoorHumi = NAN, indoorPres = NAN;
-        if (board.getTempSensor()->read(indoorTemp, indoorHumi, indoorPres)) {
-            log_i(TAG, "Indoor: %.1f°C  %.0f%%", indoorTemp, indoorHumi);
-            page.setIndoorData(indoorTemp, indoorHumi);
-        } else {
-            log_e(TAG, "Indoor sensor read failed");
-        }
+    // The weather page is the only consumer of indoor temperature/humidity.
+    // When disabled, do not power or probe the sensor. When enabled, open it
+    // just for this reading and close it again immediately.
+    //
+    // The three outcomes are logged distinctly on purpose: "disabled" means the
+    // user turned Indoor Climate off in the web config, while "read failed"
+    // means the sensor was probed and did not answer. Both render as "--", so
+    // without these lines the two are indistinguishable from the panel alone.
+    float indoorTemp = NAN, indoorHumi = NAN;
+    if (!cfg.indoorSensorEnabled) {
+        log_i(TAG, "Indoor: skipped (Indoor Climate disabled in config)");
+    } else if (_readIndoorSensor(board, indoorTemp, indoorHumi)) {
+        log_i(TAG, "Indoor: %.1fdegC  %.0f%%", indoorTemp, indoorHumi);
+        page.setIndoorData(indoorTemp, indoorHumi);
+    } else {
+        log_e(TAG, "Indoor: unavailable (sensor absent or read failed)");
     }
 
     board.epd().firstPage();
     do { page.draw(); } while (board.epd().nextPage());
     log_i(TAG, "Render complete");
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// On-demand indoor sensor access (AHT20 / BME280)
+// ═════════════════════════════════════════════════════════════════════════════
+// Powers the sensor on, takes a single reading, and powers it straight back
+// down — the sensor is never left energised across the wake cycle. Returns
+// false (leaving the outputs NAN) when there is no sensor, it fails to come up,
+// or the read fails. The sensor is guaranteed to be off on every exit path.
+bool DashboardApp::_readIndoorSensor(IBoard &board, float &temp, float &humidity) {
+    temp     = NAN;
+    humidity = NAN;
+
+    ISensor *sensor = board.getTempSensor();
+    if (!sensor) {
+        return false;
+    }
+
+    if (!sensor->begin()) {
+        log_e(TAG, "Sensor %s power-up failed", sensor->typeName());
+        return false; // begin() already powered the sensor back down
+    }
+
+    float pressure = NAN;
+    const bool ok = sensor->read(temp, humidity, pressure);
+    sensor->end(); // always power down, even if the read failed
+    if (!ok) {
+        log_e(TAG, "Indoor sensor read failed");
+        return false;
+    }
+    return true;
 }
 
 void DashboardApp::_renderDashboardPage(IBoard &board, PageManager &pageManager, PageId page,
@@ -1811,6 +1873,9 @@ void DashboardApp::_enterScheduledSleep(IBoard &board, uint64_t deepSleepUs,
     board.epd().hibernate();
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
+    // Belt-and-braces: make sure nothing the render path opened (sensors in
+    // particular) is still energised when we go down.
+    board.shutdownSensors();
     board.deepSleep(deepSleepUs);
 }
 
