@@ -27,6 +27,99 @@ static const uint16_t CLR_WHITE = 0xFFFF;
 
 enum Align { LEFT, CENTER, RIGHT };
 
+// Paint the weather glyph two-tone, with the "highlight" pigment applied to
+// the artwork's paper (bit == 0) pixels.
+//
+// Artwork polarity — do not "fix" this without re-measuring. These icons are
+// ink-filled tiles, not outline glyphs: wi_day_sunny_96x96 is 8264 ink pixels
+// to 952 paper, and *no* paper pixel lies on the glyph border. Viewed through
+// Adafruit_GFX::drawBitmap (which paints `color` where the bit is set), the
+// ink becomes the tile and the paper becomes the sun: a disc with ring and
+// rays, cut cleanly out of the tile.
+//
+// So the correct tint set is simply "every paper pixel". The previous
+// implementation (drawYellowSun) instead drew an independent yellow disc and
+// rays underneath the bitmap; because the two were derived from different
+// geometry they could never line up, and the tile's ring strokes sliced
+// through the oversize yellow disc — producing a yellow blob with black
+// crescents bitten out of it (measured: 896 px of yellow, most of it colliding
+// with the drawn artwork).
+//
+// An earlier revision of this routine used a flood fill to tint only paper
+// regions *enclosed* by ink. That is correct for an outline glyph but does
+// nothing here: with zero paper on the border nothing is unreachable, so the
+// fill painted no pixels at all (verified against a BFS reference — the tint
+// set came out empty). Tinting paper directly is both simpler and correct.
+//
+// When the highlight pigment is unavailable (monochrome panel or the icon is
+// larger than the scratch array), fall back to a plain two-tone stamp.
+static constexpr uint16_t SUN_ICON_MAX_DIM = 96;
+
+// Decoded paper mask for the largest glyph, 1 byte per pixel.
+static uint8_t s_iconPaper[SUN_ICON_MAX_DIM * SUN_ICON_MAX_DIM];
+
+// Bit value (1 = transparent / paper) of glyph pixel (r, c).
+static inline bool glyphPixelTransparent(const uint8_t *bitmap, uint8_t bytesPerRow,
+                                         uint8_t r, uint8_t c) {
+    return (pgm_read_byte(bitmap + static_cast<uint16_t>(r) * bytesPerRow +
+                          static_cast<uint16_t>(c >> 3)) &
+            static_cast<uint8_t>(0x80 >> (c & 7))) != 0;
+}
+
+// Stamp `bitmap` at (x, y): ink -> black, paper -> `highlight` (or black on
+// the mono path, where the caller passes CLR_BLACK for both).
+static void drawHighlightedWeatherIcon(Adafruit_GFX *g, int16_t x, int16_t y,
+                                       const uint8_t *bitmap, uint8_t size,
+                                       uint16_t highlight) {
+    const uint8_t bytesPerRow = static_cast<uint8_t>((size + 7) / 8);
+
+    // Decode once: a byte-per-pixel mask avoids re-reading and re-shifting the
+    // 1-bit source for every pixel of the inner drawing loops.
+    for (uint8_t r = 0; r < size; ++r) {
+        for (uint8_t c = 0; c < size; ++c) {
+            s_iconPaper[static_cast<uint16_t>(r) * size + c] =
+                glyphPixelTransparent(bitmap, bytesPerRow, r, c) ? 1 : 0;
+        }
+    }
+
+    for (uint8_t r = 0; r < size; ++r) {
+        for (uint8_t c = 0; c < size; ++c) {
+            const bool paper = s_iconPaper[static_cast<uint16_t>(r) * size + c] != 0;
+            if (!paper) {
+                g->drawPixel(static_cast<int16_t>(x + c),
+                             static_cast<int16_t>(y + r), CLR_BLACK);
+            } else {
+                g->drawPixel(static_cast<int16_t>(x + c),
+                             static_cast<int16_t>(y + r), highlight);
+            }
+        }
+    }
+}
+
+static void drawDaytimeWeatherIcon(Adafruit_GFX *g, int16_t x, int16_t y,
+                                   const uint8_t *bitmap, uint8_t size,
+                                   bool sunny, bool partlyCloudy,
+                                   bool hasHighlight, uint16_t highlight) {
+    (void)partlyCloudy; // the artwork already carries its own cloud shape
+    (void)sunny;
+
+    if (!hasHighlight || size > SUN_ICON_MAX_DIM) {
+        // No highlight pigment on this panel, or the glyph exceeds the scratch
+        // array: plain two-tone stamp (ink -> white tile, paper -> black art).
+        g->drawBitmap(x, y, bitmap, size, size, CLR_WHITE, CLR_BLACK);
+        return;
+    }
+    drawHighlightedWeatherIcon(g, x, y, bitmap, size, highlight);
+}
+
+static bool wmoHasDaytimeSun(int code, bool day) {
+    return day && (code == 0 || code == 1 || code == 2);
+}
+
+static bool wmoForecastHasSun(int code) {
+    return code == 0 || code == 1 || code == 2;
+}
+
 // Return pixel width of the string with the currently selected font.
 static int16_t strW(Adafruit_GFX *g, const String &s) {
     int16_t x1, y1; uint16_t w, h;
@@ -166,7 +259,10 @@ void PageWeather400x300::_drawCurrentConditions() {
     const uint8_t *icon = (_weather && _weather->valid)
         ? wmo96(_weather->current.weather_code, _weather->current.is_day)
         : wi_day_sunny_96x96;  // placeholder
-    _gfx->drawBitmap(0, 0, icon, 96, 96, CLR_WHITE, CLR_BLACK);
+    const int weatherCode = (_weather && _weather->valid) ? _weather->current.weather_code : 0;
+    const bool isDay = !_weather || !_weather->valid || _weather->current.is_day;
+    drawDaytimeWeatherIcon(_gfx, 0, 0, icon, 96, wmoHasDaytimeSun(weatherCode, isDay),
+                           isDay && weatherCode == 2, _hasHighlight, _colorHighlight);
 
     // ── Temperature ──
     // Reference: display.setFont(&FONT_18pt8b);
@@ -440,7 +536,9 @@ void PageWeather400x300::_drawForecast() {
         const uint8_t *fc_icon = (i < numDays)
             ? wmo32(_weather->daily[i].weather_code)
             : wi_day_sunny_32x32;   // placeholder
-        _gfx->drawBitmap(x, 47, fc_icon, 32, 32, CLR_WHITE, CLR_BLACK);
+        const int weatherCode = i < numDays ? _weather->daily[i].weather_code : 0;
+        drawDaytimeWeatherIcon(_gfx, x, 47, fc_icon, 32, wmoForecastHasSun(weatherCode),
+                               weatherCode == 2, _hasHighlight, _colorHighlight);
 
         // ── Day-of-week label at y=42 ──
         char dayBuf[8] = {};

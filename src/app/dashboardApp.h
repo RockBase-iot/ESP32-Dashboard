@@ -75,6 +75,12 @@ private:
     static void _renderWeather(IBoard &board, WeatherClass &weather,
                                const AppConfig &cfg, const String &localIP);
 
+    // Open the on-board temperature/humidity sensor, take a single reading, and
+    // power it straight back down. Returns false (leaving temp/humidity NaN)
+    // when no sensor is fitted, it fails to power up, or the read fails. The
+    // sensor is off on every exit path — it is never left energised.
+    static bool _readIndoorSensor(IBoard &board, float &temp, float &humidity);
+
     // 2b-iv-b. Render a configured dashboard page.
     static void _renderDashboardPage(IBoard &board, PageManager &pageManager, PageId page,
                                      int64_t nowUtc, WeatherClass &weather,

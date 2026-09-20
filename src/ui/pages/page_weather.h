@@ -32,6 +32,11 @@ public:
     // Optional: inject local IP (call before WiFi is disconnected).
     void setLocalIP(const String &ip) { _localIP = ip; }
 
+    void setHighlightColor(uint16_t color, bool hasHighlight) {
+        _colorHighlight = color;
+        _hasHighlight = hasHighlight;
+    }
+
 protected:
     // Drawing primitives — layout/font/coordinate details are in subclasses.
     virtual void _drawCurrentConditions() = 0;
@@ -59,4 +64,6 @@ protected:
     uint16_t      _h           = 0;
     uint16_t      _colorAccent = 0;
     bool          _hasAccent   = false;
+    uint16_t      _colorHighlight = 0;
+    bool          _hasHighlight   = false;
 };

@@ -23,6 +23,7 @@ struct Rect {
 constexpr uint16_t kDashboardBlack = 0x0000;
 constexpr uint16_t kDashboardWhite = 0xFFFF;
 constexpr uint16_t kDashboardAccent = 0xF800;
+constexpr uint16_t kDashboardHighlight = 0xFFE0;
 
 class IDrawSurface {
 public:

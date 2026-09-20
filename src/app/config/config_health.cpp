@@ -75,6 +75,9 @@ PageReadiness evaluatePage(PageId page, bool enabled, const AppConfig &cfg,
     switch (page) {
         case PageId::WeatherToday:
         case PageId::WeeklyWeather:
+        case PageId::HomeRhythm:
+        case PageId::HomeAtlas:
+        case PageId::HomePrint:
             return weatherReady
                 ? ready(page, enabled, "weather", "Weather location is configured")
                 : required(page, enabled, "weather", "Set city, latitude, and longitude");

@@ -33,6 +33,28 @@ private:
     Settings &_settings;
 };
 
+// Indoor Climate changed from opt-in to on-by-default. Devices that ran the
+// old firmware may have IndoorEn=false persisted from a config save, which
+// would mask the new default forever. This flips such a stored value once, then
+// records a marker so a later deliberate opt-out is never overwritten.
+//
+// The marker is what makes this safe: without it, every boot would re-enable a
+// sensor the user had switched off on purpose.
+void migrateIndoorSensorDefault(Settings &settings) {
+    if (settings.GetBool(NVS_KEY_INDOOR_DEFAULTED, false)) {
+        return; // already migrated
+    }
+    const bool stored = settings.GetBool(NVS_KEY_INDOOR_ENABLED, DEFAULT_INDOOR_ENABLED);
+    if (!stored) {
+        settings.SetBool(NVS_KEY_INDOOR_ENABLED, true);
+        log_i(TAG_CONFIG, "Indoor sensor defaulted to enabled (was stored as disabled)");
+    }
+    settings.SetBool(NVS_KEY_INDOOR_DEFAULTED, true);
+    if (!settings.Commit()) {
+        log_w(TAG_CONFIG, "Could not persist indoor-sensor migration marker");
+    }
+}
+
 void runLegacyConfigMigrations() {
     Settings settings(NVS_NAMESPACE_WEATHER, /*read_write=*/true);
     SettingsLegacyConfigStore store(settings);
@@ -42,6 +64,7 @@ void runLegacyConfigMigrations() {
     } else if (result == LegacyConfigMigrationResult::Error) {
         log_w(TAG_CONFIG, "Could not remove legacy access credential");
     }
+    migrateIndoorSensorDefault(settings);
 }
 
 uint16_t clampFocusMinutes(int32_t minutes) {
@@ -204,7 +227,7 @@ void loadAppConfig(AppConfig &cfg) {
     cfg.indoorRoom = s.GetString(NVS_KEY_INDOOR_ROOM, DEFAULT_INDOOR_ROOM);
 
     PageSettings rawPageSettings = pageDefaults;
-    if (cfg.configVersion == kDashboardConfigVersion) {
+    if (cfg.configVersion == kDashboardConfigVersion || cfg.configVersion == 4) {
         rawPageSettings.configVersion = cfg.configVersion;
         rawPageSettings.enabledMask = cfg.pageEnabledMask;
         rawPageSettings.autoRotateMask = cfg.pageAutoRotateMask;
@@ -216,7 +239,7 @@ void loadAppConfig(AppConfig &cfg) {
         rawPageSettings.rotationIntervalMinutes = cfg.rotationIntervalMinutes;
     }
     rawPageSettings.timeZoneId = cfg.timeZoneId.c_str();
-    copyPageSettingsToConfig(cfg, sanitizePageSettings(rawPageSettings));
+    copyPageSettingsToConfig(cfg, migratePageSettings(cfg.configVersion, rawPageSettings));
 }
 
 void saveAppConfig(const AppConfig &cfg) {

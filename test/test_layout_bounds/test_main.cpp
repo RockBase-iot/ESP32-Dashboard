@@ -21,6 +21,7 @@
 #include "ui/layouts/epd_400x300/render_time.h"
 #include "ui/layouts/epd_400x300/render_news.h"
 #include "ui/layouts/epd_400x300/render_finance.h"
+#include "ui/layouts/epd_400x300/render_home_weather.h"
 #include "ui/layouts/epd_400x300/render_overview.cpp"
 #include "ui/layouts/epd_400x300/render_calendar.cpp"
 #include "ui/layouts/epd_400x300/render_agenda.cpp"
@@ -28,6 +29,8 @@
 #include "ui/layouts/epd_400x300/render_time.cpp"
 #include "ui/layouts/epd_400x300/render_news.cpp"
 #include "ui/layouts/epd_400x300/render_finance.cpp"
+#include "app/weather/home_weather_snapshot.cpp"
+#include "ui/layouts/epd_400x300/render_home_weather.cpp"
 
 namespace {
 class IconProbeSurface final : public IDrawSurface {
@@ -830,6 +833,34 @@ void test_finance_pages_match_prototype_text_and_stay_inside_400x300() {
     }
 }
 
+void test_home_weather_pages_stay_inside_400x300() {
+    HomeWeatherSnapshot snapshot;
+    snapshot.valid = true;
+    snapshot.location = "CHENGDU";
+    snapshot.condition = "PARTLY CLOUDY";
+    snapshot.currentTempC = 21.0f;
+    snapshot.lowTempC = 18.0f;
+    snapshot.highTempC = 26.0f;
+    snapshot.cloudCoverPct = 62.0f;
+    snapshot.currentPrecipitationMm = 0.0f;
+    snapshot.windMps = 3.6f;
+    snapshot.windDisplayValue = 3.6f;
+    snapshot.hourly = {{"10", 21.0f, 0.0f}, {"18", 22.0f, 0.3f}};
+    const HomeWeatherPalette palette{kDashboardWhite, kDashboardBlack,
+                                     kDashboardAccent, kDashboardHighlight, true};
+    MemoryDrawSurface surface(400, 300);
+
+    renderHomeRhythmPage(surface, snapshot, palette, 17, 19);
+    renderHomeAtlasPage(surface, snapshot, palette, 18, 19);
+    renderHomePrintPage(surface, snapshot, palette, 19, 19);
+
+    assert_no_layout_faults(surface);
+    assert_has_text(surface, "HOME · RHYTHM");
+    assert_has_text(surface, "HOME · ATLAS");
+    assert_has_text(surface, "HOME · PRINT");
+    assert_has_text(surface, "RAIN FROM 18:00");
+}
+
 void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_calendar_pages_stay_inside_400x300);
@@ -851,6 +882,7 @@ void setup() {
     RUN_TEST(test_focus_clock_page_uses_dedicated_countdown_layout);
     RUN_TEST(test_weather_time_and_news_pages_stay_inside_400x300);
     RUN_TEST(test_finance_pages_match_prototype_text_and_stay_inside_400x300);
+    RUN_TEST(test_home_weather_pages_stay_inside_400x300);
     UNITY_END();
 }
 

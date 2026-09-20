@@ -8,7 +8,7 @@ The upload_all target uploads firmware first, then uploads the LittleFS image
 that contains the web portal assets.
 """
 
-from SCons.Script import AlwaysBuild, Import
+from SCons.Script import AlwaysBuild, COMMAND_LINE_TARGETS, Import
 import gzip
 import os
 import subprocess
@@ -72,6 +72,20 @@ def build_web_assets(source, target, env):
 
 
 env.AddPreAction("$BUILD_DIR/littlefs.bin", build_web_assets)
+
+# PlatformIO creates the LittleFS build node only when buildfs is a command-line
+# target. Create the same node for release_bin so it is a real SCons dependency
+# instead of starting a nested PlatformIO/SCons process from the release action.
+release_fs_image = None
+if "release_bin" in COMMAND_LINE_TARGETS and "buildfs" not in COMMAND_LINE_TARGETS:
+    mklittlefs_dir = env.PioPlatform().get_package_dir("tool-mklittlefs")
+    if not mklittlefs_dir:
+        raise RuntimeError("tool-mklittlefs is required to build release_bin")
+    mklittlefs_name = "mklittlefs.exe" if os.name == "nt" else "mklittlefs"
+    env.Replace(MKFSTOOL=os.path.join(mklittlefs_dir, mklittlefs_name))
+    release_fs_image = env.DataToBin("$BUILD_DIR/littlefs", "$PROJECT_DATA_DIR")
+    env.NoCache(release_fs_image)
+    AlwaysBuild(release_fs_image)
 
 def upload_all_action(target, source, env):
     project_dir = env.subst("$PROJECT_DIR")
@@ -141,9 +155,13 @@ def release_bin_action(target, source, env):
     return 0
 
 
+release_sources = ["$BUILD_DIR/${PROGNAME}.bin"]
+if release_fs_image is not None:
+    release_sources.append(release_fs_image)
+
 release_bin = env.Alias(
     "release_bin",
-    ["$BUILD_DIR/${PROGNAME}.bin", "$BUILD_DIR/littlefs.bin"],
+    release_sources,
     env.Action(release_bin_action, "[EPD/Release] Merge firmware + LittleFS release image"),
 )
 AlwaysBuild(release_bin)

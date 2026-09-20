@@ -57,9 +57,15 @@ PageSettings defaultPageSettings() {
         PageId::Headlines,
         PageId::TodayInHistory,
         PageId::ImportantMilestones,
+        PageId::HomeRhythm,
+        PageId::HomeAtlas,
+        PageId::HomePrint,
     };
-    for (size_t i = 0; i < defaultOrder.size() && i < settings.order.size(); ++i) {
-        settings.order[i] = defaultOrder[i];
+    settings.orderCount = 0;
+    for (PageId id : defaultOrder) {
+        if (isValidPageId(id) && settings.orderCount < settings.order.size()) {
+            settings.order[settings.orderCount++] = id;
+        }
     }
     settings.templateId = PageTemplateId::CalmGrid;
     settings.rotationIntervalMinutes = 0;
@@ -70,7 +76,11 @@ PageSettings defaultPageSettings() {
 PageSettings sanitizePageSettings(const PageSettings &settings) {
     PageSettings clean = settings;
     clean.configVersion = kDashboardConfigVersion;
-    clean.enabledMask &= (1UL << kPageCount) - 1UL;
+    uint32_t supportedMask = 0;
+    for (const PageDescriptor &descriptor : pageCatalog()) {
+        supportedMask |= pageMask(descriptor.id);
+    }
+    clean.enabledMask &= supportedMask;
     clean.autoRotateMask &= clean.enabledMask;
     if (clean.enabledMask == 0) {
         clean.enabledMask = pageMask(PageId::Overview);
@@ -110,6 +120,30 @@ PageSettings sanitizePageSettings(const PageSettings &settings) {
     clean.order = order;
     clean.orderCount = count;
     return clean;
+}
+
+PageSettings migratePageSettings(uint32_t storedVersion, const PageSettings &storedSettings) {
+    if (storedVersion == kDashboardConfigVersion) {
+        return sanitizePageSettings(storedSettings);
+    }
+    if (storedVersion != 4) {
+        PageSettings defaults = defaultPageSettings();
+        if (!storedSettings.timeZoneId.empty()) {
+            defaults.timeZoneId = storedSettings.timeZoneId;
+        }
+        return defaults;
+    }
+
+    PageSettings migrated = storedSettings;
+    migrated.configVersion = kDashboardConfigVersion;
+#if defined(UI_LAYOUT_EPD_400x300)
+    const uint32_t homeMask = pageMask(PageId::HomeRhythm) |
+                              pageMask(PageId::HomeAtlas) |
+                              pageMask(PageId::HomePrint);
+    migrated.enabledMask |= homeMask;
+    migrated.autoRotateMask |= homeMask;
+#endif
+    return sanitizePageSettings(migrated);
 }
 
 PageManager::PageManager(const PageSettings &settings)

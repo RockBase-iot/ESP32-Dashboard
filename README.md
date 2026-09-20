@@ -4,6 +4,8 @@ An e-paper dashboard running on ESP32. The current version includes multiple pro
 
 This is just the beginning. The roadmap includes cryptocurrency prices, stock market data, local IoT device monitoring, and more — living up to the vision of a true **"Dashboard for anything"** on e-paper.
 
+![ESP32 Dashboard](image/EPD-420-4C.jpg)
+
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/PlatformIO-espressif32%406.13.0-orange.svg)](https://platformio.org/)
 [![Framework](https://img.shields.io/badge/Framework-Arduino-blue.svg)](https://www.arduino.cc/)
@@ -37,6 +39,10 @@ English | [简体中文](./README_cn.md)
 | P7 World Clock | P8 Focus Clock |
 |:-:|:-:|
 | ![p7](image/P7.png) | ![p8](image/P8.png) |
+
+| HOME-RHYTHM | HOME-ATLAS | HOME-PRINT |
+|:-:|:-:|:-:|
+| ![home-rhythm](image/4C-RHYTHM.jpg) | ![home-atlas](image/4C-ATLAS.jpg) | ![home-print](image/4C-PRINT.jpg) |
 
 ---
 
@@ -91,6 +97,7 @@ English | [简体中文](./README_cn.md)
 | Environment | MCU | Display | Resolution | Colors | Sensor | Notes |
 |---|---|---|---|---|---|---|
 | `nm-display-420` | ESP32-S3 | 4.2″ EPD (GDEY042Z98) | 400 × 300 | Red / Black / White | AHT20 | |
+| `nm-epd-420-4c` | ESP32-S3 | 4.2″ 4-color EPD (GDEY0420F51) | 400 × 300 | Red / Black / White / Yellow | AHT20 | Existing Dashboard pages; yellow palette is reserved for the later Home phase |
 | `dfrobot_firebeetle2_esp32e` / `firebeetle32` | ESP32 | 7.5″ EPD (GDEY075T7) | 800 × 480 | Black / White | BME280 | Planned — coming very soon, not yet tested |
 
 ---
@@ -142,7 +149,13 @@ Select the environment that matches your hardware:
 ```bash
 # NM Display 420 (ESP32-S3, 4.2" tri-color EPD)
 pio run -e nm-display-420 -t upload_all
+
+# NM-EPD-420-4C (ESP32-S3, 4.2" four-color EPD)
+pio run -e nm-epd-420-4c -t upload_all
 ```
+
+The 4C target runs the existing Dashboard pages with the same controls and
+power-management flow; its yellow pigment is reserved for the later Home UI.
 
 Use `upload_all` for normal device flashing. It builds and uploads the firmware,
 generates the gzipped web assets, then uploads the LittleFS filesystem image
@@ -165,13 +178,15 @@ The output is written to `release/` using the pattern
 `release/esp32-dashboard-nm-epd-420-v1.0.0.bin`. The version comes from the
 root `VERSION` file.
 
-### 4. Test & build gates
+### 3.1 Test & build gates
 
 Run the focused PlatformIO build-only tests before firmware changes:
 
 ```bash
 pio test -e nm-display-420 -f test_display_page_state --without-uploading --without-testing
 pio test -e nm-display-420 -f test_wake_coordinator --without-uploading --without-testing
+pio test -e nm-display-420 -f test_legacy_config_migration --without-uploading --without-testing
+pio test -e nm-display-420 -f test_source_runtime_cache --without-uploading --without-testing
 ```
 
 The project no longer defines `env:native`; tests are compiled for the current
@@ -191,7 +206,7 @@ pio run -e nm-display-420 -t buildfs
 pio run -e nm-display-420 -t release_bin
 ```
 
-### 5. Manuals and launch docs
+## Manuals and launch docs
 
 | Topic | English | Chinese |
 |---|---|---|
@@ -200,7 +215,7 @@ pio run -e nm-display-420 -t release_bin
 | Privacy and security | [docs/privacy-security.md](docs/privacy-security.md) | [docs/privacy-security-zh.md](docs/privacy-security-zh.md) |
 | Recovery and reflash | [docs/recovery-reflash.md](docs/recovery-reflash.md) | [docs/recovery-reflash-zh.md](docs/recovery-reflash-zh.md) |
 
-### 6. First-time configuration (AP mode)
+### 4. First-time configuration (AP mode)
 
 1. Hold the **Boot button (IO0) for ≥ 2 seconds** on first power-on to enter **AP config mode**.
 2. The display shows the hotspot name (`esp_dashboard_XXXXXX`), the temporary WPA2 key, and the URL `192.168.4.1`.
@@ -208,7 +223,7 @@ pio run -e nm-display-420 -t release_bin
 4. Fill in WiFi credentials, latitude / longitude, city name, UTC offset, and preferred units; click **Save**.
 5. The device restarts, connects to your home WiFi, fetches weather, and refreshes the display.
 
-### 7. Subsequent access
+### 5. Subsequent access
 
 After every wake the device keeps its WiFi connection open for a configurable window (`PortalSec`, default 30 s, `0` = disabled). During that window its IP address is shown at the bottom-left of the display — open `http://<device-ip>` from any browser on the same network to change settings. Saving in the portal offers an immediate restart so the new configuration is applied right away; otherwise it takes effect on the next wake.
 
@@ -382,4 +397,11 @@ Power-on / timer wakeup
 - [ArduinoJson](https://arduinojson.org/) — JSON library for Arduino / ESP32
 - [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer) — async HTTP server
 - [Adafruit](https://github.com/adafruit) — sensor and GFX libraries
+
+## Changelog
+
+### 2026-09-20
+
+- Added support for the `NM-EPD-420-4C` 4-color e-paper display.
+- Added three desktop themes: `HOME-RHYTHM`, `HOME-ATLAS`, and `HOME-PRINT`.
 

@@ -6,7 +6,8 @@ MemoryDrawSurface::MemoryDrawSurface(int16_t width, int16_t height)
     : _width(width), _height(height) {}
 
 bool MemoryDrawSurface::isAllowedColor(uint16_t color) const {
-    return color == kDashboardBlack || color == kDashboardWhite || color == kDashboardAccent;
+    return color == kDashboardBlack || color == kDashboardWhite ||
+           color == kDashboardAccent || color == kDashboardHighlight;
 }
 
 void MemoryDrawSurface::touchPixel(int16_t x, int16_t y, uint16_t color) {

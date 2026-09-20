@@ -27,11 +27,13 @@
 #include "ui/layouts/epd_400x300/render_agenda.h"
 #include "ui/layouts/epd_400x300/render_calendar.h"
 #include "ui/layouts/epd_400x300/render_finance.h"
+#include "ui/layouts/epd_400x300/render_home_weather.h"
 #include "ui/layouts/epd_400x300/render_news.h"
 #include "ui/layouts/epd_400x300/render_overview.h"
 #include "ui/layouts/epd_400x300/render_time.h"
 #include "ui/layouts/epd_400x300/render_weather.h"
 #include "app/weather/weather_page_adapter.h"
+#include "app/weather/home_weather_snapshot.h"
 #endif
 #include "app/config/app_config.h"
 #include "app/memory/capacity_profile.h"
@@ -324,8 +326,11 @@ uint32_t dashboardContentHash(PageId page, const WeatherClass &weather,
     hash = fnv1aAdd(hash, batteryMv);
     hash = fnv1aAddString(hash, cfg.timeZoneId);
     hash = fnv1aAddString(hash, cfg.timeFormat);
+    const bool homeWeatherTheme = page == PageId::HomeRhythm ||
+                                  page == PageId::HomeAtlas ||
+                                  page == PageId::HomePrint;
     if (page == PageId::WeatherToday || page == PageId::WeeklyWeather ||
-        page == PageId::IndoorClimate) {
+        page == PageId::IndoorClimate || homeWeatherTheme) {
         const WeatherData &data = weather.weather();
         const AirQualityData &aqi = weather.airQuality();
         hash = fnv1aAddString(hash, cfg.city);
@@ -344,6 +349,19 @@ uint32_t dashboardContentHash(PageId page, const WeatherClass &weather,
         hash = fnv1aAdd(hash, aqi.valid ? 1 : 0);
         hash = fnv1aAdd(hash, static_cast<uint32_t>(aqi.us_aqi));
         hash = fnv1aAddString(hash, localIP);
+        if (homeWeatherTheme) {
+            hash = fnv1aAddString(hash, data.current.time);
+            hash = fnv1aAdd(hash, scaledFloatHash(data.current.cloud_cover, 1.0f));
+            hash = fnv1aAdd(hash, scaledFloatHash(data.current.precipitation, 100.0f));
+            hash = fnv1aAdd(hash, scaledFloatHash(data.current.wind_speed, 10.0f));
+            hash = fnv1aAdd(hash, data.current.is_day ? 1 : 0);
+            const size_t hourCount = std::min<size_t>(12, data.hourly.size());
+            for (size_t index = 0; index < hourCount; ++index) {
+                hash = fnv1aAddString(hash, data.hourly[index].time);
+                hash = fnv1aAdd(hash, scaledFloatHash(data.hourly[index].temperature, 10.0f));
+                hash = fnv1aAdd(hash, scaledFloatHash(data.hourly[index].precipitation, 100.0f));
+            }
+        }
     } else if (page == PageId::FocusClock) {
         hash = fnv1aAddString(hash, cfg.focusLabel);
         hash = fnv1aAdd(hash, cfg.focusMinutes);
@@ -405,14 +423,35 @@ FocusClockConfig focusClockConfigFromAppConfig(const AppConfig &cfg) {
     return normalizeFocusClockConfig(focus);
 }
 
+// Battery gauge calibration.
+//
+// Empty and full terminal voltages for a 1S Li-ion cell. BATT_MAX_MV is the
+// charger's constant-voltage setpoint, so a fully charged pack lands on 100%.
+// Do NOT widen this to 4500 mV even though the official NM-EPD-420 config.h
+// uses 2500..4500 — that range assumes a wider hardware tolerance and leaves a
+// healthy 4.2 V cell reading ~85%, which is what we were seeing.
+static constexpr uint32_t BATT_EMPTY_MV = 3300;
+static constexpr uint32_t BATT_FULL_MV  = 4200;
+
+// A 1 mV hysteresis band under BATT_FULL_MV.
+//
+// The ADC path rounds twice (cell mV -> divider mV -> integer code -> mV), and
+// the two roundings do not cancel: a genuine 4200 mV cell converts to a
+// reported 4199 mV. Without a band that reads 99%, so a fully charged pack
+// would never show 100% — exactly the bug being fixed here. Treating the top
+// 1 mV as full absorbs the rounding residue without meaningfully shifting the
+// gauge curve.
+static constexpr uint32_t BATT_FULL_TOLERANCE_MV = 1;
+
 int batteryPercentFromMv(uint32_t batteryMv) {
-    if (batteryMv <= 3300U) {
+    if (batteryMv <= BATT_EMPTY_MV) {
         return 0;
     }
-    if (batteryMv >= 4200U) {
+    if (batteryMv + BATT_FULL_TOLERANCE_MV >= BATT_FULL_MV) {
         return 100;
     }
-    return static_cast<int>((batteryMv - 3300U) * 100U / 900U);
+    return static_cast<int>((batteryMv - BATT_EMPTY_MV) * 100U /
+                            (BATT_FULL_MV - BATT_EMPTY_MV));
 }
 
 calm_grid::ChromeContext buildChromeContext(const AppConfig &cfg, int64_t nowUtc,
@@ -1062,11 +1101,13 @@ void DashboardApp::_initHardware(IBoard &board, bool coldBoot) {
     board.epd().init(/*initialPowerOn=*/coldBoot);
     log_i(TAG, "EPD init done (%dx%d)", board.dispWidth(), board.dispHeight());
 
-    if (board.getTempSensor()) {
-        bool ok = board.getTempSensor()->begin();
-        log_i(TAG, "Sensor %s init: %s", board.getTempSensor()->typeName(),
-              ok ? "OK" : "FAILED");
-    }
+    // NOTE: on-board sensors are deliberately NOT initialized here. An AHT20/BME280
+    // draws hundreds of microamps while powered, which is a large fraction of the
+    // sub-milliamp deep-sleep budget, and most pages never consume indoor data.
+    // Sensors are opened on demand by _readIndoorSensor() and closed immediately
+    // after the reading is taken. The sensor must also be already off when this
+    // function returns false or the wake cycle aborts into AP mode.
+    board.shutdownSensors();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1202,22 +1243,62 @@ void DashboardApp::_renderWeather(IBoard &board, WeatherClass &weather,
     PageWeather page;
     page.create(board.gfx(), board.dispWidth(), board.dispHeight(),
                 board.colorAccent(), board.hasAccentColor());
+    page.setHighlightColor(board.colorHighlight(), board.hasHighlightColor());
     page.setWeatherData(weather.weather(), weather.airQuality(), loc, cfg);
     page.setLocalIP(localIP);
 
-    if (board.getTempSensor()) {
-        float indoorTemp = NAN, indoorHumi = NAN, indoorPres = NAN;
-        if (board.getTempSensor()->read(indoorTemp, indoorHumi, indoorPres)) {
-            log_i(TAG, "Indoor: %.1f°C  %.0f%%", indoorTemp, indoorHumi);
-            page.setIndoorData(indoorTemp, indoorHumi);
-        } else {
-            log_e(TAG, "Indoor sensor read failed");
-        }
+    // The weather page is the only consumer of indoor temperature/humidity.
+    // When disabled, do not power or probe the sensor. When enabled, open it
+    // just for this reading and close it again immediately.
+    //
+    // The three outcomes are logged distinctly on purpose: "disabled" means the
+    // user turned Indoor Climate off in the web config, while "read failed"
+    // means the sensor was probed and did not answer. Both render as "--", so
+    // without these lines the two are indistinguishable from the panel alone.
+    float indoorTemp = NAN, indoorHumi = NAN;
+    if (!cfg.indoorSensorEnabled) {
+        log_i(TAG, "Indoor: skipped (Indoor Climate disabled in config)");
+    } else if (_readIndoorSensor(board, indoorTemp, indoorHumi)) {
+        log_i(TAG, "Indoor: %.1fdegC  %.0f%%", indoorTemp, indoorHumi);
+        page.setIndoorData(indoorTemp, indoorHumi);
+    } else {
+        log_e(TAG, "Indoor: unavailable (sensor absent or read failed)");
     }
 
     board.epd().firstPage();
     do { page.draw(); } while (board.epd().nextPage());
     log_i(TAG, "Render complete");
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// On-demand indoor sensor access (AHT20 / BME280)
+// ═════════════════════════════════════════════════════════════════════════════
+// Powers the sensor on, takes a single reading, and powers it straight back
+// down — the sensor is never left energised across the wake cycle. Returns
+// false (leaving the outputs NAN) when there is no sensor, it fails to come up,
+// or the read fails. The sensor is guaranteed to be off on every exit path.
+bool DashboardApp::_readIndoorSensor(IBoard &board, float &temp, float &humidity) {
+    temp     = NAN;
+    humidity = NAN;
+
+    ISensor *sensor = board.getTempSensor();
+    if (!sensor) {
+        return false;
+    }
+
+    if (!sensor->begin()) {
+        log_e(TAG, "Sensor %s power-up failed", sensor->typeName());
+        return false; // begin() already powered the sensor back down
+    }
+
+    float pressure = NAN;
+    const bool ok = sensor->read(temp, humidity, pressure);
+    sensor->end(); // always power down, even if the read failed
+    if (!ok) {
+        log_e(TAG, "Indoor sensor read failed");
+        return false;
+    }
+    return true;
 }
 
 void DashboardApp::_renderDashboardPage(IBoard &board, PageManager &pageManager, PageId page,
@@ -1232,6 +1313,11 @@ void DashboardApp::_renderDashboardPage(IBoard &board, PageManager &pageManager,
     GfxSurface surface(board.gfx());
     const size_t pageNumber = pageManager.pageNumber(page);
     const size_t pageCount = pageManager.pageCount();
+    const HomeWeatherSnapshot homeWeatherSnapshot =
+        buildHomeWeatherSnapshot(weather.weather(), cfg);
+    const HomeWeatherPalette homeWeatherPalette{
+        board.colorWhite(), board.colorBlack(), board.colorAccent(),
+        board.colorHighlight(), board.hasHighlightColor()};
     board.epd().firstPage();
     do {
         switch (page) {
@@ -1309,6 +1395,18 @@ void DashboardApp::_renderDashboardPage(IBoard &board, PageManager &pageManager,
             case PageId::ImportantMilestones:
                 renderImportantMilestonesPage(surface, calendarSnapshot,
                                               pageNumber, pageCount, chrome.ipText, chrome);
+                break;
+            case PageId::HomeRhythm:
+                renderHomeRhythmPage(surface, homeWeatherSnapshot, homeWeatherPalette,
+                                     pageNumber, pageCount, chrome.ipText, chrome);
+                break;
+            case PageId::HomeAtlas:
+                renderHomeAtlasPage(surface, homeWeatherSnapshot, homeWeatherPalette,
+                                    pageNumber, pageCount, chrome.ipText, chrome);
+                break;
+            case PageId::HomePrint:
+                renderHomePrintPage(surface, homeWeatherSnapshot, homeWeatherPalette,
+                                    pageNumber, pageCount, chrome.ipText, chrome);
                 break;
             default:
                 break;
@@ -1775,6 +1873,9 @@ void DashboardApp::_enterScheduledSleep(IBoard &board, uint64_t deepSleepUs,
     board.epd().hibernate();
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
+    // Belt-and-braces: make sure nothing the render path opened (sensors in
+    // particular) is still energised when we go down.
+    board.shutdownSensors();
     board.deepSleep(deepSleepUs);
 }
 
