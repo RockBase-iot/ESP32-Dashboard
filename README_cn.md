@@ -4,6 +4,8 @@
 
 这只是一个开始。后续计划陆续加入加密货币行情、股市数据、本地 IoT 设备监控等更多功能——真正发挥出墨水屏上 **"Dashboard Any"** 的潜力。
 
+![ESP32 Dashboard](image/EPD-420-4C.jpg)
+
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/PlatformIO-espressif32%406.13.0-orange.svg)](https://platformio.org/)
 [![Framework](https://img.shields.io/badge/Framework-Arduino-blue.svg)](https://www.arduino.cc/)
@@ -37,6 +39,10 @@
 | P7 World Clock | P8 Focus Clock |
 |:-:|:-:|
 | ![p7](image/P7.png) | ![p8](image/P8.png) |
+
+| HOME-RHYTHM | HOME-ATLAS | HOME-PRINT |
+|:-:|:-:|:-:|
+| ![home-rhythm](image/4C-RHYTHM.jpg) | ![home-atlas](image/4C-ATLAS.jpg) | ![home-print](image/4C-PRINT.jpg) |
 
 ---
 
@@ -372,4 +378,11 @@ src/
 - [ArduinoJson](https://arduinojson.org/) — Arduino / ESP32 JSON 库
 - [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer) — 异步 HTTP 服务器
 - [Adafruit](https://github.com/adafruit) — 传感器及 GFX 库
+- [emini-home](https://github.com/fiedoruk/emini-home) - 四色电子纸每日海报
 
+# 更新日志
+
+## 2026-9-20
+
+- 增加 `NM-EPD-420-4C` 4色墨水屏支持；
+- 新增三个桌面主题：HOME-RHYTHM, HOME-ATLAS, HOME-PRINT。
